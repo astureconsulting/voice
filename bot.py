@@ -344,7 +344,8 @@ async def chat(request: Request):
     except Exception as e:
         traceback.print_exc()
         return PlainTextResponse(f"Error: {e}", status_code=500)
-
+app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/", StaticFiles(directory=".", html=True), name="root")
 # --- Run locally ---
 if __name__ == "__main__":
     import uvicorn
