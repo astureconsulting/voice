@@ -144,7 +144,6 @@
 # if __name__ == '__main__':
 #     port = int(os.environ.get('PORT', 8080))
 #     app.run(host='0.0.0.0', port=port)
-
 import os
 import uuid
 import traceback
@@ -312,10 +311,7 @@ def get_reviews_reply():
 
 # --- API calls ---
 async def call_groq_api_with_history(system_prompt: str, history: list):
-    # Build messages for chat completion
-    messages = [{"role": "system", "content": system_prompt}]
-    messages.extend(history)  # user and assistant messages
-
+    messages = [{"role": "system", "content": system_prompt}] + history
     try:
         async with httpx.AsyncClient(timeout=8.0) as client:
             response = await client.post(
@@ -337,29 +333,44 @@ async def call_groq_api_with_history(system_prompt: str, history: list):
 
 async def call_hume_tts(text: str) -> str:
     try:
+        text = text.strip()
+        if not text:
+            return ""
+        if len(text) > 500:
+            text = text[:500]
         audio_dir = "static/audio"
         os.makedirs(audio_dir, exist_ok=True)
-        fname = f"{uuid.uuid4().hex}.mp3"
-        path = os.path.join(audio_dir, fname)
-        async with httpx.AsyncClient(timeout=25.0) as client:
+        file_name = f"{uuid.uuid4().hex}.mp3"
+        file_path = os.path.join(audio_dir, file_name)
+        async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
                 "https://api.hume.ai/v0/tts/file",
-                headers={"X-Hume-Api-Key": HUME_API_KEY, "Content-Type": "application/json"},
+                headers={
+                    "X-Hume-Api-Key": HUME_API_KEY,
+                    "Content-Type": "application/json"
+                },
                 json={
-                    "utterances": [{"text": text, "description": VOICE_DESCRIPTION}],
+                    "utterances": [
+                        {
+                            "text": text,
+                            "description": VOICE_DESCRIPTION
+                        }
+                    ],
                     "format": {"type": "mp3", "bitrate_kbps": 48},
-                    "num_generations": 1,
+                    "num_generations": 1
                 }
             )
             response.raise_for_status()
-            with open(path, "wb") as f:
+            with open(file_path, "wb") as f:
                 f.write(response.content)
-        return f"/static/audio/{fname}"
-    except Exception:
-        traceback.print_exc()
+            return f"/static/audio/{file_name}"
+    except httpx.HTTPStatusError as e:
+        print(f"Hume TTS HTTP error ({e.response.status_code}): {e.response.text}")
+        return ""
+    except Exception as e:
+        print(f"Hume TTS error: {e}")
         return ""
 
-# --- ROUTE ---
 @app.post("/api/chat")
 async def chat(request: Request):
     try:
@@ -368,7 +379,6 @@ async def chat(request: Request):
         session_id = data.get("session_id")
         user_input_lower = user_input.lower()
 
-        # Create or retrieve session
         if not session_id or session_id not in booking_sessions:
             session_id = str(uuid.uuid4())
             booking_sessions[session_id] = {
@@ -380,49 +390,32 @@ async def chat(request: Request):
             }
         session = booking_sessions[session_id]
 
-        # --- Append user message to history ---
         session["history"].append({"role": "user", "content": user_input})
 
-        is_booking_keyword = any(word in user_input_lower for word in ["book", "appointment", "schedule"])
+        # Booking flow detection keywords
+        booking_words = ["book", "appointment", "schedule"]
 
-        # -- Booking flow --
-        if session["booking_in_progress"] or is_booking_keyword:
+        if session["booking_in_progress"] or any(w in user_input_lower for w in booking_words):
             if not session["booking_in_progress"]:
                 session["booking_in_progress"] = True
-
             if session.get("waiting_confirmation"):
                 if user_input_lower in ["yes", "y", "confirm"]:
                     d = session["booking_data"]
                     confirm_msg = f"Your appointment is booked, {d.get('name','')}, on {d.get('date','')} at {d.get('time','')}. Thank you!"
-                    # Clear session data (can be improved to keep history if needed)
                     booking_sessions.pop(session_id, None)
                     audio_url = await call_hume_tts(confirm_msg)
-                    # Append bot answer to history (not necessary, session cleared)
-                    return JSONResponse({
-                        "response": confirm_msg,
-                        "audio_url": audio_url,
-                        "session_id": session_id,
-                    })
+                    return JSONResponse({"response": confirm_msg, "audio_url": audio_url, "session_id": session_id})
                 elif user_input_lower in ["no", "n", "cancel"]:
                     cancel_msg = "Booking cancelled. Let me know if you want to book again."
                     booking_sessions.pop(session_id, None)
                     audio_url = await call_hume_tts(cancel_msg)
-                    return JSONResponse({
-                        "response": cancel_msg,
-                        "audio_url": audio_url,
-                        "session_id": session_id,
-                    })
+                    return JSONResponse({"response": cancel_msg, "audio_url": audio_url, "session_id": session_id})
                 else:
-                    ask_confirm = "Please reply 'yes' to confirm or 'no' to cancel."
-                    session["history"].append({"role": "assistant", "content": ask_confirm})
-                    audio_url = await call_hume_tts(ask_confirm)
-                    return JSONResponse({
-                        "response": ask_confirm,
-                        "audio_url": audio_url,
-                        "session_id": session_id,
-                    })
+                    confirm_prompt = "Please reply 'yes' to confirm or 'no' to cancel."
+                    session["history"].append({"role": "assistant", "content": confirm_prompt})
+                    audio_url = await call_hume_tts(confirm_prompt)
+                    return JSONResponse({"response": confirm_prompt, "audio_url": audio_url, "session_id": session_id})
 
-            # Gather booking fields one-by-one
             if session["awaiting_field"]:
                 session["booking_data"][session["awaiting_field"]] = user_input
                 session["awaiting_field"] = None
@@ -432,76 +425,68 @@ async def chat(request: Request):
                     prompt = FIELD_PROMPTS[field]
                     session["history"].append({"role": "assistant", "content": prompt})
                     audio_url = await call_hume_tts(prompt)
-                    return JSONResponse({
-                        "response": prompt,
-                        "audio_url": audio_url,
-                        "session_id": session_id,
-                    })
+                    return JSONResponse({"response": prompt, "audio_url": audio_url, "session_id": session_id})
 
             d = session["booking_data"]
-            conf_text = f"Thanks {d['name']}. Confirm appointment on {d['date']} at {d['time']}? (yes/no)"
+            confirm_text = f"Thanks {d['name']}. Confirm appointment on {d['date']} at {d['time']}? (yes/no)"
             session["waiting_confirmation"] = True
-            session["history"].append({"role": "assistant", "content": conf_text})
-            audio_url = await call_hume_tts(conf_text)
-            return JSONResponse({
-                "response": conf_text,
-                "audio_url": audio_url,
-                "session_id": session_id,
-            })
+            session["history"].append({"role": "assistant", "content": confirm_text})
+            audio_url = await call_hume_tts(confirm_text)
+            return JSONResponse({"response": confirm_text, "audio_url": audio_url, "session_id": session_id})
 
-        # --- Quick shortcut replies before fallback to LLM ---
+        # Quick answers shortcuts
         if "service" in user_input_lower or "treatment" in user_input_lower:
-            msg = get_services_reply()
-            session["history"].append({"role": "assistant", "content": msg})
-            audio_url = await call_hume_tts(msg)
-            return JSONResponse({"response": msg, "audio_url": audio_url, "session_id": session_id})
+            reply = get_services_reply()
+            session["history"].append({"role": "assistant", "content": reply})
+            audio_url = await call_hume_tts(reply)
+            return JSONResponse({"response": reply, "audio_url": audio_url, "session_id": session_id})
 
         if "price" in user_input_lower or "cost" in user_input_lower:
-            price_msg = lookup_service_price(user_input_lower)
-            if price_msg:
-                session["history"].append({"role": "assistant", "content": price_msg})
-                audio_url = await call_hume_tts(price_msg)
-                return JSONResponse({"response": price_msg, "audio_url": audio_url, "session_id": session_id})
+            price_reply = lookup_service_price(user_input_lower)
+            if price_reply:
+                session["history"].append({"role": "assistant", "content": price_reply})
+                audio_url = await call_hume_tts(price_reply)
+                return JSONResponse({"response": price_reply, "audio_url": audio_url, "session_id": session_id})
 
         if any(k in user_input_lower for k in ["doctor", "dentist", "staff", "team"]):
-            doc_msg = get_doctors_reply()
-            session["history"].append({"role": "assistant", "content": doc_msg})
-            audio_url = await call_hume_tts(doc_msg)
-            return JSONResponse({"response": doc_msg, "audio_url": audio_url, "session_id": session_id})
+            doc_reply = get_doctors_reply()
+            session["history"].append({"role": "assistant", "content": doc_reply})
+            audio_url = await call_hume_tts(doc_reply)
+            return JSONResponse({"response": doc_reply, "audio_url": audio_url, "session_id": session_id})
 
         if any(k in user_input_lower for k in ["address", "where", "location", "open", "hour", "contact"]):
-            loc_msg = get_location_reply()
-            session["history"].append({"role": "assistant", "content": loc_msg})
-            audio_url = await call_hume_tts(loc_msg)
-            return JSONResponse({"response": loc_msg, "audio_url": audio_url, "session_id": session_id})
+            loc_reply = get_location_reply()
+            session["history"].append({"role": "assistant", "content": loc_reply})
+            audio_url = await call_hume_tts(loc_reply)
+            return JSONResponse({"response": loc_reply, "audio_url": audio_url, "session_id": session_id})
 
         if "book" in user_input_lower:
-            book_msg = get_booking_contact_reply()
-            session["history"].append({"role": "assistant", "content": book_msg})
-            audio_url = await call_hume_tts(book_msg)
-            return JSONResponse({"response": book_msg, "audio_url": audio_url, "session_id": session_id})
+            book_reply = get_booking_contact_reply()
+            session["history"].append({"role": "assistant", "content": book_reply})
+            audio_url = await call_hume_tts(book_reply)
+            return JSONResponse({"response": book_reply, "audio_url": audio_url, "session_id": session_id})
 
         if any(k in user_input_lower for k in ["nav", "insurance", "pay", "installment", "helfo"]):
-            pay_msg = get_payment_reply()
-            session["history"].append({"role": "assistant", "content": pay_msg})
-            audio_url = await call_hume_tts(pay_msg)
-            return JSONResponse({"response": pay_msg, "audio_url": audio_url, "session_id": session_id})
+            pay_reply = get_payment_reply()
+            session["history"].append({"role": "assistant", "content": pay_reply})
+            audio_url = await call_hume_tts(pay_reply)
+            return JSONResponse({"response": pay_reply, "audio_url": audio_url, "session_id": session_id})
 
         if any(k in user_input_lower for k in ["review", "experience", "good", "best"]):
-            rev_msg = get_reviews_reply()
-            session["history"].append({"role": "assistant", "content": rev_msg})
-            audio_url = await call_hume_tts(rev_msg)
-            return JSONResponse({"response": rev_msg, "audio_url": audio_url, "session_id": session_id})
+            rev_reply = get_reviews_reply()
+            session["history"].append({"role": "assistant", "content": rev_reply})
+            audio_url = await call_hume_tts(rev_reply)
+            return JSONResponse({"response": rev_reply, "audio_url": audio_url, "session_id": session_id})
 
-        # --- Fallback: Call LLM with full history ---
-        ai_reply = await call_groq_api_with_history(SYSTEM_PROMPT, session["history"])
-        session["history"].append({"role": "assistant", "content": ai_reply})
-        audio_url = await call_hume_tts(ai_reply)
+        # Fallback to LLM with full history
+        llm_reply = await call_groq_api_with_history(SYSTEM_PROMPT, session["history"])
+        session["history"].append({"role": "assistant", "content": llm_reply})
+        audio_url = await call_hume_tts(llm_reply)
 
         return JSONResponse({
-            "response": ai_reply,
+            "response": llm_reply,
             "audio_url": audio_url,
-            "session_id": session_id
+            "session_id": session_id,
         })
 
     except Exception as e:
@@ -512,4 +497,3 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8080))
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
-
