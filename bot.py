@@ -7,6 +7,17 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 import traceback
 import uvicorn
+
+from fastapi.middleware.cors import CORSMiddleware
+
+# 👇 Add this to allow frontend domain
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://voiceagentwebring-production.up.railway.app"],  # your frontend URL
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 # ---------- 🔧 Configuration ----------
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "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")
 HUME_API_KEY = os.getenv("HUME_API_KEY", "qP6pf2ZKlzDnDJPEUBT0RXgYzX5P24MBAALbbTRaGANbf9Mz")
