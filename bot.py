@@ -230,84 +230,10 @@ FIELD_PROMPTS = {
     "time": "What time do you prefer? (e.g., 14:30)"
 }
 
-SERVICES_LIST = [
-    ("Annual dental check-up", "1,400"),
-    ("Cleaning and polishing", "950"),
-    ("Specialist diagnostics", "1,290"),
-    ("Tooth-colored fillings", "1,150"),
-    ("Crowns", "7,950"),
-    ("Root canal (per hour)", "2,600"),
-    ("Tooth extraction", "1,350"),
-    ("Bleaching (jaw)", "2,500"),
-    ("Dentures", "14,010"),
-]
+# (Include SERVICES_LIST, SERVICE_KEYWORDS, DOCTORS, etc., unchanged here)
 
-SERVICE_KEYWORDS = {
-    "check": ("Annual dental check-up", "1,400"),
-    "clean": ("Cleaning and polishing", "950"),
-    "hygien": ("Cleaning and polishing", "950"),
-    "diagnos": ("Specialist diagnostics", "1,290"),
-    "acute": ("Acute/general dentist examination", "770"),
-    "consult": ("Consultation/plan", "1,070"),
-    "fill": ("Tooth-colored fillings", "1,150"),
-    "crown": ("Crowns", "7,950"),
-    "dentur": ("Dentures", "14,010"),
-    "prosthetic": ("Dentures", "14,010"),
-    "root": ("Root canal treatment (per hour)", "2,600"),
-    "canal": ("Root canal treatment (per hour)", "2,600"),
-    "extract": ("Tooth extraction", "1,350"),
-    "surgic": ("Surgical extraction", "3,440"),
-    "period": ("Periodontal treatment", "1,260"),
-    "prevent": ("Preventive (hour)", "1,600"),
-    "bleach": ("Bleaching (single jaw)", "2,500"),
-    "x-ray": ("X-ray per image", "160"),
-    "panorama": ("Panoramic x-ray", "820"),
-    "anesth": ("Local anesthesia", "210"),
-    "core": ("Core build-up with titanium post", "3,140"),
-    "drap": ("Surgical draping", "570"),
-    "journal": ("Journal printout by mail", "150"),
-}
-
-DOCTORS = [
-    ("Manzar Din", "Implant prosthetics, advanced restorative"),
-    ("Naeem Khan", "Patient-centered general dentistry"),
-    ("Areeb Raja", "Comprehensive, gentle care"),
-    ("Dhiya Alkassar", "Comfort-focused general dentistry"),
-    ("Jawad Afzal", "Professional, thorough dentistry"),
-    ("Noor Alam", "Quality, clear communication"),
-    ("Wei Qi Fang", "Preventive, general dentistry"),
-    ("Amer Ahmed", "Implants, tooth replacement"),
-    ("Mohammed Moafi", "Oral surgery, implants"),
-]
-
-# --- Replies generator ---
-def get_services_reply():
-    lines = []
-    for name, price in SERVICES_LIST[:4]:
-        lines.append(f"{name}: kr {price}")
-    return "\n".join(lines) + "\n…and more. Ask for a specific price."
-
-def get_doctors_reply():
-    snippet = "; ".join([f"{n} ({info})" for n, info in DOCTORS[:4]])
-    return f"{snippet}\n…and more specialist dentists."
-
-def lookup_service_price(user_msg: str):
-    for k, (name, price) in SERVICE_KEYWORDS.items():
-        if k in user_msg:
-            return f"{name}: kr {price}."
-    return None
-
-def get_location_reply():
-    return "Din Tannklinikk is at Helsfyr, Oslo. Open 9am–6pm. Website: dintannklinikk.no"
-
-def get_booking_contact_reply():
-    return "To book: Use https://dintannklinikk.no/ or call our 24/7 AI Receptionist +123 456 7890."
-
-def get_payment_reply():
-    return "We accept NAV, Helfo, and offer flexible installment solutions."
-
-def get_reviews_reply():
-    return "We are known for skilled, professional, friendly dentists and reasonable prices."
+# --- Replies generator and helper functions here ---
+# (You can re-use your previous code unchanged)
 
 # --- API calls ---
 async def call_groq_api_with_history(system_prompt: str, history: list):
@@ -338,10 +264,12 @@ async def call_hume_tts(text: str) -> str:
             return ""
         if len(text) > 500:
             text = text[:500]
+
         audio_dir = "static/audio"
         os.makedirs(audio_dir, exist_ok=True)
         file_name = f"{uuid.uuid4().hex}.mp3"
         file_path = os.path.join(audio_dir, file_name)
+
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
                 "https://api.hume.ai/v0/tts/file",
@@ -350,20 +278,26 @@ async def call_hume_tts(text: str) -> str:
                     "Content-Type": "application/json"
                 },
                 json={
-                    "utterances": [
-                        {
-                            "text": text,
-                            "description": VOICE_DESCRIPTION
-                        }
-                    ],
+                    "utterances": [{"text": text, "description": VOICE_DESCRIPTION}],
                     "format": {"type": "mp3", "bitrate_kbps": 48},
                     "num_generations": 1
                 }
             )
             response.raise_for_status()
+            data = response.json()
+            audio_url = data.get("generations", [{}])[0].get("url")
+            if not audio_url:
+                print("No audio URL returned from Hume TTS API:", data)
+                return ""
+
+            # Download the actual MP3 file from audio_url
+            audio_resp = await client.get(audio_url)
+            audio_resp.raise_for_status()
             with open(file_path, "wb") as f:
-                f.write(response.content)
-            return f"/static/audio/{file_name}"
+                f.write(audio_resp.content)
+
+        return f"/static/audio/{file_name}"
+
     except httpx.HTTPStatusError as e:
         print(f"Hume TTS HTTP error ({e.response.status_code}): {e.response.text}")
         return ""
@@ -392,93 +326,12 @@ async def chat(request: Request):
 
         session["history"].append({"role": "user", "content": user_input})
 
-        # Booking flow detection keywords
-        booking_words = ["book", "appointment", "schedule"]
+        # Implement your booking logic and shortcuts similarly here...
 
-        if session["booking_in_progress"] or any(w in user_input_lower for w in booking_words):
-            if not session["booking_in_progress"]:
-                session["booking_in_progress"] = True
-            if session.get("waiting_confirmation"):
-                if user_input_lower in ["yes", "y", "confirm"]:
-                    d = session["booking_data"]
-                    confirm_msg = f"Your appointment is booked, {d.get('name','')}, on {d.get('date','')} at {d.get('time','')}. Thank you!"
-                    booking_sessions.pop(session_id, None)
-                    audio_url = await call_hume_tts(confirm_msg)
-                    return JSONResponse({"response": confirm_msg, "audio_url": audio_url, "session_id": session_id})
-                elif user_input_lower in ["no", "n", "cancel"]:
-                    cancel_msg = "Booking cancelled. Let me know if you want to book again."
-                    booking_sessions.pop(session_id, None)
-                    audio_url = await call_hume_tts(cancel_msg)
-                    return JSONResponse({"response": cancel_msg, "audio_url": audio_url, "session_id": session_id})
-                else:
-                    confirm_prompt = "Please reply 'yes' to confirm or 'no' to cancel."
-                    session["history"].append({"role": "assistant", "content": confirm_prompt})
-                    audio_url = await call_hume_tts(confirm_prompt)
-                    return JSONResponse({"response": confirm_prompt, "audio_url": audio_url, "session_id": session_id})
+        # Quick answers shortcuts etc.
+        # (Use your existing logic here as you already defined)
 
-            if session["awaiting_field"]:
-                session["booking_data"][session["awaiting_field"]] = user_input
-                session["awaiting_field"] = None
-            for field in REQUIRED_BOOKING_FIELDS:
-                if field not in session["booking_data"] or not session["booking_data"][field].strip():
-                    session["awaiting_field"] = field
-                    prompt = FIELD_PROMPTS[field]
-                    session["history"].append({"role": "assistant", "content": prompt})
-                    audio_url = await call_hume_tts(prompt)
-                    return JSONResponse({"response": prompt, "audio_url": audio_url, "session_id": session_id})
-
-            d = session["booking_data"]
-            confirm_text = f"Thanks {d['name']}. Confirm appointment on {d['date']} at {d['time']}? (yes/no)"
-            session["waiting_confirmation"] = True
-            session["history"].append({"role": "assistant", "content": confirm_text})
-            audio_url = await call_hume_tts(confirm_text)
-            return JSONResponse({"response": confirm_text, "audio_url": audio_url, "session_id": session_id})
-
-        # Quick answers shortcuts
-        if "service" in user_input_lower or "treatment" in user_input_lower:
-            reply = get_services_reply()
-            session["history"].append({"role": "assistant", "content": reply})
-            audio_url = await call_hume_tts(reply)
-            return JSONResponse({"response": reply, "audio_url": audio_url, "session_id": session_id})
-
-        if "price" in user_input_lower or "cost" in user_input_lower:
-            price_reply = lookup_service_price(user_input_lower)
-            if price_reply:
-                session["history"].append({"role": "assistant", "content": price_reply})
-                audio_url = await call_hume_tts(price_reply)
-                return JSONResponse({"response": price_reply, "audio_url": audio_url, "session_id": session_id})
-
-        if any(k in user_input_lower for k in ["doctor", "dentist", "staff", "team"]):
-            doc_reply = get_doctors_reply()
-            session["history"].append({"role": "assistant", "content": doc_reply})
-            audio_url = await call_hume_tts(doc_reply)
-            return JSONResponse({"response": doc_reply, "audio_url": audio_url, "session_id": session_id})
-
-        if any(k in user_input_lower for k in ["address", "where", "location", "open", "hour", "contact"]):
-            loc_reply = get_location_reply()
-            session["history"].append({"role": "assistant", "content": loc_reply})
-            audio_url = await call_hume_tts(loc_reply)
-            return JSONResponse({"response": loc_reply, "audio_url": audio_url, "session_id": session_id})
-
-        if "book" in user_input_lower:
-            book_reply = get_booking_contact_reply()
-            session["history"].append({"role": "assistant", "content": book_reply})
-            audio_url = await call_hume_tts(book_reply)
-            return JSONResponse({"response": book_reply, "audio_url": audio_url, "session_id": session_id})
-
-        if any(k in user_input_lower for k in ["nav", "insurance", "pay", "installment", "helfo"]):
-            pay_reply = get_payment_reply()
-            session["history"].append({"role": "assistant", "content": pay_reply})
-            audio_url = await call_hume_tts(pay_reply)
-            return JSONResponse({"response": pay_reply, "audio_url": audio_url, "session_id": session_id})
-
-        if any(k in user_input_lower for k in ["review", "experience", "good", "best"]):
-            rev_reply = get_reviews_reply()
-            session["history"].append({"role": "assistant", "content": rev_reply})
-            audio_url = await call_hume_tts(rev_reply)
-            return JSONResponse({"response": rev_reply, "audio_url": audio_url, "session_id": session_id})
-
-        # Fallback to LLM with full history
+        # Fallback - call LLM with conversation history
         llm_reply = await call_groq_api_with_history(SYSTEM_PROMPT, session["history"])
         session["history"].append({"role": "assistant", "content": llm_reply})
         audio_url = await call_hume_tts(llm_reply)
