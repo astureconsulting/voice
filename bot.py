@@ -122,7 +122,8 @@ async def chat(request: Request):
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/", StaticFiles(directory=".", html=True), name="root")
 
-# ---------- 🚀 Local Dev Server ----------
-if __name__ == "__main__":
+
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8000, reload=True)
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port)
