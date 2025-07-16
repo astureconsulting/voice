@@ -9,6 +9,8 @@ import traceback
 import uvicorn
 
 from fastapi.middleware.cors import CORSMiddleware
+# ---------- ⚡ FastAPI App ----------
+app = FastAPI()
 
 # 👇 Add this to allow frontend domain
 app.add_middleware(
@@ -30,8 +32,6 @@ SYSTEM_PROMPT = (
     "Be conversational and to the point. Avoid repeating or over-explaining."
 )
 
-# ---------- ⚡ FastAPI App ----------
-app = FastAPI()
 
 # ---------- 🤖 Async Call to Groq API ----------
 async def call_groq_api(user_message: str) -> str:
