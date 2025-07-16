@@ -7,20 +7,13 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 import traceback
 import uvicorn
+from flask import Flask, request, jsonify, send_from_directory
+from flask_cors import CORS
 
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
+app = Flask(__name__)
 
-app = FastAPI()
+CORS(app)
 
-# ✅ CORS Middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["https://voiceagentwebring-production.up.railway.app"],  # your frontend domain
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 # ---------- 🔧 Configuration ----------
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "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")
 HUME_API_KEY = os.getenv("HUME_API_KEY", "qP6pf2ZKlzDnDJPEUBT0RXgYzX5P24MBAALbbTRaGANbf9Mz")
