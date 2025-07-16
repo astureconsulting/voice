@@ -8,14 +8,15 @@ from fastapi.staticfiles import StaticFiles
 import traceback
 import uvicorn
 
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-# ---------- ⚡ FastAPI App ----------
+
 app = FastAPI()
 
-# 👇 Add this to allow frontend domain
+# ✅ CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://voiceagentwebring-production.up.railway.app"],  # your frontend URL
+    allow_origins=["https://voiceagentwebring-production.up.railway.app"],  # your frontend domain
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -33,6 +34,7 @@ SYSTEM_PROMPT = (
 )
 
 
+app = FastAPI()
 # ---------- 🤖 Async Call to Groq API ----------
 async def call_groq_api(user_message: str) -> str:
     url = "https://api.groq.com/openai/v1/chat/completions"
