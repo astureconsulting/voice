@@ -1,1 +1,1 @@
-web: gunicorn --bind 0.0.0.0:8080 bot:app
+gunicorn app.main:app --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8080
