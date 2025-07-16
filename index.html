@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Voice AI Chat Agent</title>
+  <link href="https://fonts.googleapis.com/css?family=Poppins:400,600" rel="stylesheet">
+  <style>
+    body {
+      background: linear-gradient(135deg, #1CB5E0 0%, #000851 100%);
+      font-family: 'Poppins', sans-serif;
+      color: #fff;
+      margin: 0;
+      padding: 0;
+    }
+    #container {
+      max-width: 430px;
+      margin: 60px auto;
+      background: rgba(10, 15, 45, 0.97);
+      border-radius: 24px;
+      box-shadow: 0 8px 24px #0004;
+      padding: 24px 20px;
+      display: flex;
+      flex-direction: column;
+    }
+    h2 {
+      text-align: center;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+    #chat {
+      min-height: 320px;
+      max-height: 400px;
+      overflow-y: auto;
+      margin-bottom: 12px;
+      background: rgba(40, 50, 90, 0.85);
+      border-radius: 12px;
+      padding: 14px;
+      font-size: 1rem;
+    }
+    .msg.user {
+      color: #3af2f3;
+      text-align: right;
+      margin-bottom: 8px;
+    }
+    .msg.bot {
+      color: #ffe177;
+      text-align: left;
+      margin-bottom: 8px;
+    }
+    #start-stop {
+      background: linear-gradient(90deg, #ffc371, #1CB5E0);
+      color: #222;
+      padding: 12px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-bottom: 10px;
+    }
+    #start-stop.listening {
+      animation: pulseGlow 1.2s infinite alternate;
+    }
+    @keyframes pulseGlow {
+      0% { box-shadow: 0 0 16px 6px #23cbe099; }
+      100% { box-shadow: 0 0 32px 10px #ffe17799; }
+    }
+    #status {
+      text-align: center;
+      font-size: 0.95em;
+      color: #00e8ff;
+    }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <h2>🎧 Voice AI Assistant</h2>
+    <div id="chat"></div>
+    <div id="status"></div>
+    <button id="start-stop">▶️ Start Conversation</button>
+  </div>
+
+<script>
+const btn = document.getElementById("start-stop");
+const chatDiv = document.getElementById("chat");
+const statusDiv = document.getElementById("status");
+
+let isListening = false;
+let recognition = null;
+
+function appendMsg(sender, text) {
+  const msg = document.createElement("div");
+  msg.className = `msg ${sender}`;
+  msg.textContent = text;
+  chatDiv.appendChild(msg);
+  chatDiv.scrollTop = chatDiv.scrollHeight;
+}
+
+function playAudio(url, callback) {
+  const audio = new Audio(url);
+  audio.onended = callback;
+  audio.onerror = callback;
+  audio.play().catch(callback);
+}
+
+function sendToBot(text) {
+  appendMsg("user", text);
+  statusDiv.textContent = "Thinking...";
+  fetch("/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message: text }),
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.response) {
+      appendMsg("bot", data.response);
+      playAudio(data.audio_url, () => {
+        if (isListening) recognition.start(); // loop again
+      });
+      statusDiv.textContent = "";
+    } else {
+      statusDiv.textContent = "No response from server.";
+    }
+  })
+  .catch(err => {
+    console.error("Error:", err);
+    statusDiv.textContent = "Server error";
+  });
+}
+
+function setupRecognition() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    statusDiv.textContent = "Speech Recognition not supported";
+    btn.disabled = true;
+    return;
+  }
+
+  recognition = new SpeechRecognition();
+  recognition.lang = 'en-US';
+  recognition.continuous = false;
+  recognition.interimResults = false;
+
+  recognition.onstart = () => {
+    statusDiv.textContent = "Listening... 🎙️";
+    btn.textContent = "⏹️ Stop Conversation";
+    btn.classList.add("listening");
+  };
+
+  recognition.onend = () => {
+    if (!isListening) {
+      statusDiv.textContent = "Stopped";
+      btn.textContent = "▶️ Start Conversation";
+      btn.classList.remove("listening");
+    }
+  };
+
+  recognition.onerror = (event) => {
+    console.error("Speech Recognition error:", event.error);
+    statusDiv.textContent = "Error: " + event.error;
+    recognition.stop();
+  };
+
+  recognition.onresult = (event) => {
+    const transcript = event.results[0][0].transcript;
+    if (transcript && isListening) {
+      sendToBot(transcript);
+    }
+  };
+}
+
+btn.addEventListener("click", () => {
+  if (!recognition) return;
+  if (isListening) {
+    isListening = false;
+    recognition.stop();
+  } else {
+    isListening = true;
+    recognition.start();
+  }
+});
+
+setupRecognition();
+</script>
+</body>
+</html>
