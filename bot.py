@@ -207,6 +207,7 @@ Maintain a friendly, clear tone. Use Norwegian or English based on user input.
 
 app = FastAPI()
 
+# ✅ CORS configuration
 origins = ["https://voiceagentwebring-production.up.railway.app"]
 app.add_middleware(
     CORSMiddleware,
@@ -216,11 +217,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ✅ Serve static audio files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# --- STATE & CONSTANTS ----
+# --- Session state ---
 booking_sessions = {}
-
 REQUIRED_BOOKING_FIELDS = ["name", "phone", "email", "date", "time"]
 FIELD_PROMPTS = {
     "name": "Please provide your full name.",
@@ -230,12 +231,7 @@ FIELD_PROMPTS = {
     "time": "What time do you prefer? (e.g., 14:30)"
 }
 
-# (Include SERVICES_LIST, SERVICE_KEYWORDS, DOCTORS, etc., unchanged here)
-
-# --- Replies generator and helper functions here ---
-# (You can re-use your previous code unchanged)
-
-# --- API calls ---
+# --- Groq LLM call ---
 async def call_groq_api_with_history(system_prompt: str, history: list):
     messages = [{"role": "system", "content": system_prompt}] + history
     try:
@@ -257,7 +253,8 @@ async def call_groq_api_with_history(system_prompt: str, history: list):
         traceback.print_exc()
         return "Sorry, I could not access the clinic info right now."
 
-async def call_hume_tts(text: str) -> str:
+# --- Hume TTS call ---
+async def call_hume_tts(text: str, request: Request) -> str:
     try:
         text = text.strip()
         if not text:
@@ -290,13 +287,18 @@ async def call_hume_tts(text: str) -> str:
                 print("No audio URL returned from Hume TTS API:", data)
                 return ""
 
-            # Download the actual MP3 file from audio_url
+            # Download the MP3 file
             audio_resp = await client.get(audio_url)
             audio_resp.raise_for_status()
             with open(file_path, "wb") as f:
                 f.write(audio_resp.content)
 
-        return f"/static/audio/{file_name}"
+        # ✅ Return full audio URL
+        base_url = str(request.base_url).rstrip("/")
+        final_url = f"{base_url}/static/audio/{file_name}"
+        print("Audio saved at:", file_path)
+        print("Audio URL returned to frontend:", final_url)
+        return final_url
 
     except httpx.HTTPStatusError as e:
         print(f"Hume TTS HTTP error ({e.response.status_code}): {e.response.text}")
@@ -305,13 +307,13 @@ async def call_hume_tts(text: str) -> str:
         print(f"Hume TTS error: {e}")
         return ""
 
+# --- Main chat route ---
 @app.post("/api/chat")
 async def chat(request: Request):
     try:
         data = await request.json()
         user_input = data.get("message", "").strip()
         session_id = data.get("session_id")
-        user_input_lower = user_input.lower()
 
         if not session_id or session_id not in booking_sessions:
             session_id = str(uuid.uuid4())
@@ -322,19 +324,16 @@ async def chat(request: Request):
                 "waiting_confirmation": False,
                 "history": []
             }
-        session = booking_sessions[session_id]
 
+        session = booking_sessions[session_id]
         session["history"].append({"role": "user", "content": user_input})
 
-        # Implement your booking logic and shortcuts similarly here...
-
-        # Quick answers shortcuts etc.
-        # (Use your existing logic here as you already defined)
-
-        # Fallback - call LLM with conversation history
+        # Call LLM
         llm_reply = await call_groq_api_with_history(SYSTEM_PROMPT, session["history"])
         session["history"].append({"role": "assistant", "content": llm_reply})
-        audio_url = await call_hume_tts(llm_reply)
+
+        # Call Hume TTS
+        audio_url = await call_hume_tts(llm_reply, request)
 
         return JSONResponse({
             "response": llm_reply,
@@ -346,7 +345,8 @@ async def chat(request: Request):
         traceback.print_exc()
         return PlainTextResponse(f"Error: {e}", status_code=500)
 
+# --- Run locally ---
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8080))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
+    uvicorn.run("bot:app", host="0.0.0.0", port=port, reload=True)
