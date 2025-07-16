@@ -204,11 +204,11 @@ Opening hours: 9am to 6pm.
 
 Maintain a friendly, clear tone. Use Norwegian or English based on user input.
 """
-
 app = FastAPI()
 
-# ✅ CORS configuration
+# ✅ Allow frontend domain
 origins = ["https://voiceagentwebring-production.up.railway.app"]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -217,10 +217,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ✅ Serve static audio files
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# ✅ Serve static files normally (used for other routes)
+if not os.path.exists("static/audio"):
+    os.makedirs("static/audio")
 
-# --- Session state ---
+# --- Serve Audio with CORS headers manually ---
+@app.get("/static/audio/{filename}")
+async def serve_audio(filename: str):
+    file_path = f"static/audio/{filename}"
+    headers = {
+        "Access-Control-Allow-Origin": "https://voiceagentwebring-production.up.railway.app"
+    }
+    return FileResponse(path=file_path, media_type="audio/mpeg", headers=headers)
+
+# --- Session State ---
 booking_sessions = {}
 REQUIRED_BOOKING_FIELDS = ["name", "phone", "email", "date", "time"]
 FIELD_PROMPTS = {
@@ -231,7 +241,7 @@ FIELD_PROMPTS = {
     "time": "What time do you prefer? (e.g., 14:30)"
 }
 
-# --- Groq LLM call ---
+# --- LLM Call ---
 async def call_groq_api_with_history(system_prompt: str, history: list):
     messages = [{"role": "system", "content": system_prompt}] + history
     try:
@@ -247,13 +257,12 @@ async def call_groq_api_with_history(system_prompt: str, history: list):
                 }
             )
             response.raise_for_status()
-            content = response.json()["choices"][0]["message"]["content"].strip()
-            return content
+            return response.json()["choices"][0]["message"]["content"].strip()
     except Exception:
         traceback.print_exc()
         return "Sorry, I could not access the clinic info right now."
 
-# --- Hume TTS call ---
+# --- Hume TTS ---
 async def call_hume_tts(text: str, request: Request) -> str:
     try:
         text = text.strip()
@@ -262,10 +271,8 @@ async def call_hume_tts(text: str, request: Request) -> str:
         if len(text) > 500:
             text = text[:500]
 
-        audio_dir = "static/audio"
-        os.makedirs(audio_dir, exist_ok=True)
         file_name = f"{uuid.uuid4().hex}.mp3"
-        file_path = os.path.join(audio_dir, file_name)
+        file_path = os.path.join("static/audio", file_name)
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
@@ -281,33 +288,22 @@ async def call_hume_tts(text: str, request: Request) -> str:
                 }
             )
             response.raise_for_status()
-            data = response.json()
-            audio_url = data.get("generations", [{}])[0].get("url")
-            if not audio_url:
-                print("No audio URL returned from Hume TTS API:", data)
-                return ""
+            audio_url = response.json()["generations"][0]["url"]
 
-            # Download the MP3 file
             audio_resp = await client.get(audio_url)
             audio_resp.raise_for_status()
+
             with open(file_path, "wb") as f:
                 f.write(audio_resp.content)
 
-        # ✅ Return full audio URL
         base_url = str(request.base_url).rstrip("/")
-        final_url = f"{base_url}/static/audio/{file_name}"
-        print("Audio saved at:", file_path)
-        print("Audio URL returned to frontend:", final_url)
-        return final_url
+        return f"{base_url}/static/audio/{file_name}"
 
-    except httpx.HTTPStatusError as e:
-        print(f"Hume TTS HTTP error ({e.response.status_code}): {e.response.text}")
-        return ""
     except Exception as e:
-        print(f"Hume TTS error: {e}")
+        traceback.print_exc()
         return ""
 
-# --- Main chat route ---
+# --- Chat API ---
 @app.post("/api/chat")
 async def chat(request: Request):
     try:
@@ -328,11 +324,8 @@ async def chat(request: Request):
         session = booking_sessions[session_id]
         session["history"].append({"role": "user", "content": user_input})
 
-        # Call LLM
         llm_reply = await call_groq_api_with_history(SYSTEM_PROMPT, session["history"])
         session["history"].append({"role": "assistant", "content": llm_reply})
-
-        # Call Hume TTS
         audio_url = await call_hume_tts(llm_reply, request)
 
         return JSONResponse({
@@ -344,9 +337,8 @@ async def chat(request: Request):
     except Exception as e:
         traceback.print_exc()
         return PlainTextResponse(f"Error: {e}", status_code=500)
-app.mount("/static", StaticFiles(directory="static"), name="static")
-app.mount("/", StaticFiles(directory=".", html=True), name="root")
-# --- Run locally ---
+
+# --- Run if local ---
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8080))
