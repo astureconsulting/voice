@@ -145,7 +145,6 @@
 #     port = int(os.environ.get('PORT', 8080))
 #     app.run(host='0.0.0.0', port=port)
 
-
 import os
 import uuid
 import traceback
@@ -155,323 +154,360 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
-# ---------- 🔧 Configuration ----------
+# --- CONFIG ---
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "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")
 HUME_API_KEY = os.getenv("HUME_API_KEY", "qP6pf2ZKlzDnDJPEUBT0RXgYzX5P24MBAALbbTRaGANbf9Mz")
 LLAMA3_MODEL = "llama3-8b-8192"
 VOICE_DESCRIPTION = "friendly, natural young assistant, warm, quick response, clear, enthusiastic"
 
 SYSTEM_PROMPT = """
-You are an expert Virtual Assistant for Dintannklinikk dental clinics. Your task is to create a concise, accurate, and well-structured overview of Din Tannklinikk (dintannklinikk.no), ensuring that all major aspects of the clinic are covered. When generating content, always include the following main points:
+You are Din Tannklinikk's expert digital assistant. 
+Always reply in a warm, concise, professional style, under 6 lines. 
 
-Clinic Introduction:
-- Din Tannklinikk is located in Helsfyr, Oslo.
-- Dedicated to providing comfortable and modern dental care with over 20 years of experience.
+If asked about services, list 3–4 main services with prices, then say '…and more'.
+If asked for price, give exact price for that service.
+If asked about doctors/staff: list names and specialization briefly, mention more exist.
+If asked about location, hours, contact, payment, or booking, reply directly.
 
-Team and Expertise:
-- Multidisciplinary team including dentists, oral surgeons, and dental health secretaries.
-- Specializations across various fields of dentistry.
+Booking steps: ask for name, phone, email, date, time one by one in friendly tone.
+Confirm all details before final booking.
 
-Meet Our Team:
-- Manzar Din – Dentist, expert in implant prosthetics and advanced restorative treatments.
-- Naeem Khan – Dentist, known for skill, integrity, and patient-centered care.
-- Areeb Raja – Dentist, provides comprehensive dental care with a gentle touch.
-- Dhiya Alkassar – Dentist, experienced in broad dental treatments focusing on patient comfort.
-- Jawad Afzal – Dentist, recognized for professionalism and thoroughness.
-- Noor Alam – Dentist, committed to quality care and clear communication.
-- Wei Qi Fang – Dentist, detail-oriented in general and preventive dentistry.
-- Amer Ahmed – Dentist, specializes in implant prosthetics and advanced tooth replacement.
-- Mohammed Moafi – Oral Surgeon, expert in oral surgery including extractions and implants.
+Clinic location: Helsfyr, Oslo, 20+ years experience.
+Doctors include Manzar Din (implants), Naeem Khan (patient-focused), Areeb Raja, Dhiya Alkassar, Jawad Afzal, Noor Alam, Wei Qi Fang, Amer Ahmed, Mohammed Moafi.
+Services and prices: See below.
 
-Patient Care Philosophy:
-- Focus on empathy, professionalism, and good communication.
-- Takes time to understand patient needs and provide clear recommendations.
+- Annual dental check-up: 1,400 NOK
+- Cleaning: 950 NOK
+- Specialist diagnostic: 1,290 NOK
+- Acute/general exam: 770 NOK
+- Consultation/treatment plan: 1,070 NOK
+- Tooth-colored fillings: 1,150 NOK
+- Crowns: 7,950 NOK
+- Dentures: 14,010 NOK
+- Root canal (per hour): 2,600 NOK
+- Tooth extraction: 1,350 NOK
+- Surgical extraction: 3,440 NOK
+- Periodontal treatment: 1,260 NOK
+- Preventive treatment (hourly): 1,600 NOK
+- Bleaching (single jaw): 2,500 NOK
+- Bleaching (upper/lower jaw): 3,500 NOK
+- X-ray per image: 160 NOK
+- Panoramic x-ray: 820 NOK
+- Local anesthesia: 210 NOK
+- Hygiene supplement: 170 NOK
+- Core build-up with titanium post: 3,140 NOK
+- Surgical draping: 570 NOK
+- Journal printout by mail: 150 NOK
 
-Modern Technology:
-- Uses up-to-date equipment and methods for best possible treatment.
+Payments: Accept NAV, Helfo; flexible installment options.
+Booking: Use https://dintannklinikk.no/ or call +123 456 7890 24/7 AI receptionist.
+Opening hours: 9am to 6pm.
 
-Services Offered (with starting prices):
-- Annual dental check-up (examination, x-rays, cleaning, hygiene): from kr 1,400
-- Cleaning, polishing, and hygiene: from kr 950
-- Specialist examination/diagnostics: from kr 1,290
-- Acute/general dentist examination: kr 770
-- Consultation/comprehensive treatment plan: from kr 1,070
-- Tooth-colored fillings (various surfaces): from kr 1,150
-- Crowns (metal-ceramic, all-ceramic): from kr 7,950
-- Dental prosthetics (full and partial dentures): from kr 14,010
-- Endodontics (root canal treatment): kr 2,600 per hour
-- Tooth extraction (simple/complicated): from kr 1,350
-- Surgical extraction: from kr 3,440
-- Periodontal treatment (subgingival): from kr 1,260
-- Preventive treatment (hourly): from kr 1,600
-- Bleaching (single jaw): kr 2,500
-- Bleaching (upper/lower jaw): kr 3,500
-- X-ray per image: kr 160
-- Panoramic x-ray: kr 820
-- Local anesthesia: kr 210
-- Hygiene supplement: kr 170
-- Core build-up with titanium post: kr 3,140
-- Surgical draping: kr 570
-- Journal printout by mail: kr 150
-
-Prices:
-- All prices are transparent and competitive.
-- Detailed price lists are available on the website or upon request.
-
-Payment and Insurance:
-- Accepts NAV-guarantee.
-- Offers direct settlement with Helfo.
-- Provides flexible installment solutions.
-
-Appointment Flexibility:
-- Treatments adapted to fit patient schedules.
-- Patients receive clear cost estimates and thorough explanations.
-
-Commitment to Dental Health:
-- Encourages prioritizing necessary dental treatment.
-- Helps patients achieve good oral health and a radiant smile.
-
-Contact and Booking Information:
-- Email & info: https://dintannklinikk.no/
-- To book an appointment, email us or call our 24/7 AI Receptionist (+123 456 7890) for immediate assistance.
-- Timings: 9am to 6pm.
-When a user ask to book an appointment only, then ask for their name, phone number, email, preferred date, and time one by one in a friendly and clear manner otherwise just answer user's Queries. Confirm all details before finalizing the booking.
-
-Reputation:
-- Positive patient reviews highlight skill, professionalism, and friendly care.
-
-Patient Reviews:
-- “I’ve had many dentists in Norway and I wasn’t happy until I found Dr. Naeem Khan...”
-- “Best in Oslo… Trustworthy and highly skilled.”
-- “I’m terrified of dentists, but I was so well taken care of...”
-- “Professional services, best dentist.”
-- “Really good doctor and very sincere.”
-- “Quality is high and price is reasonable compared to other dentals in Oslo...”
-- “Naeem is incredibly skilled, very professional and pleasant to talk to...”
-- “Everyone is very nice and accommodating. Dr. Diyah has been my dentist for many years...”
-
-Always respond in a clear, friendly, professional tone, matching the user's language (English or Norwegian), and keep responses concise (under 6 lines).
+Maintain a friendly, clear tone. Use Norwegian or English based on user input.
 """
 
-# ---------- 🚀 Initialize FastAPI ----------
 app = FastAPI()
 
-# ---------- 🌐 Enable CORS ----------
-origins = [
-    "https://voiceagentwebring-production.up.railway.app",  # your frontend domain
-    # Add other allowed domains here if needed
-]
+origins = ["https://voiceagentwebring-production.up.railway.app"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,      # For production, specify exact origins; use ["*"] only for development
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"]
+    allow_headers=["*"],
 )
 
-# ---------- 🗂️ Mount Static Folder ----------
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# ---------- In-memory booking session storage (for demo only!) ----------
+# --- STATE & CONSTANTS ----
 booking_sessions = {}
 
 REQUIRED_BOOKING_FIELDS = ["name", "phone", "email", "date", "time"]
-
 FIELD_PROMPTS = {
     "name": "Please provide your full name.",
     "phone": "May I have your phone number?",
     "email": "Could you share your email address?",
-    "date": "What date would you like to book the appointment for? (e.g., 2025-08-01)",
+    "date": "What date would you like to book? (e.g., 2025-08-01)",
     "time": "What time do you prefer? (e.g., 14:30)"
 }
 
-# ---------- 🤖 Call LLM API ----------
-async def call_groq_api(user_message: str) -> str:
+SERVICES_LIST = [
+    ("Annual dental check-up", "1,400"),
+    ("Cleaning and polishing", "950"),
+    ("Specialist diagnostics", "1,290"),
+    ("Tooth-colored fillings", "1,150"),
+    ("Crowns", "7,950"),
+    ("Root canal (per hour)", "2,600"),
+    ("Tooth extraction", "1,350"),
+    ("Bleaching (jaw)", "2,500"),
+    ("Dentures", "14,010"),
+]
+
+SERVICE_KEYWORDS = {
+    "check": ("Annual dental check-up", "1,400"),
+    "clean": ("Cleaning and polishing", "950"),
+    "hygien": ("Cleaning and polishing", "950"),
+    "diagnos": ("Specialist diagnostics", "1,290"),
+    "acute": ("Acute/general dentist examination", "770"),
+    "consult": ("Consultation/plan", "1,070"),
+    "fill": ("Tooth-colored fillings", "1,150"),
+    "crown": ("Crowns", "7,950"),
+    "dentur": ("Dentures", "14,010"),
+    "prosthetic": ("Dentures", "14,010"),
+    "root": ("Root canal treatment (per hour)", "2,600"),
+    "canal": ("Root canal treatment (per hour)", "2,600"),
+    "extract": ("Tooth extraction", "1,350"),
+    "surgic": ("Surgical extraction", "3,440"),
+    "period": ("Periodontal treatment", "1,260"),
+    "prevent": ("Preventive (hour)", "1,600"),
+    "bleach": ("Bleaching (single jaw)", "2,500"),
+    "x-ray": ("X-ray per image", "160"),
+    "panorama": ("Panoramic x-ray", "820"),
+    "anesth": ("Local anesthesia", "210"),
+    "core": ("Core build-up with titanium post", "3,140"),
+    "drap": ("Surgical draping", "570"),
+    "journal": ("Journal printout by mail", "150"),
+}
+
+DOCTORS = [
+    ("Manzar Din", "Implant prosthetics, advanced restorative"),
+    ("Naeem Khan", "Patient-centered general dentistry"),
+    ("Areeb Raja", "Comprehensive, gentle care"),
+    ("Dhiya Alkassar", "Comfort-focused general dentistry"),
+    ("Jawad Afzal", "Professional, thorough dentistry"),
+    ("Noor Alam", "Quality, clear communication"),
+    ("Wei Qi Fang", "Preventive, general dentistry"),
+    ("Amer Ahmed", "Implants, tooth replacement"),
+    ("Mohammed Moafi", "Oral surgery, implants"),
+]
+
+# --- Replies generator ---
+def get_services_reply():
+    lines = []
+    for name, price in SERVICES_LIST[:4]:
+        lines.append(f"{name}: kr {price}")
+    return "\n".join(lines) + "\n…and more. Ask for a specific price."
+
+def get_doctors_reply():
+    snippet = "; ".join([f"{n} ({info})" for n, info in DOCTORS[:4]])
+    return f"{snippet}\n…and more specialist dentists."
+
+def lookup_service_price(user_msg: str):
+    for k, (name, price) in SERVICE_KEYWORDS.items():
+        if k in user_msg:
+            return f"{name}: kr {price}."
+    return None
+
+def get_location_reply():
+    return "Din Tannklinikk is at Helsfyr, Oslo. Open 9am–6pm. Website: dintannklinikk.no"
+
+def get_booking_contact_reply():
+    return "To book: Use https://dintannklinikk.no/ or call our 24/7 AI Receptionist +123 456 7890."
+
+def get_payment_reply():
+    return "We accept NAV, Helfo, and offer flexible installment solutions."
+
+def get_reviews_reply():
+    return "We are known for skilled, professional, friendly dentists and reasonable prices."
+
+# --- API calls ---
+async def call_groq_api_with_history(system_prompt: str, history: list):
+    # Build messages for chat completion
+    messages = [{"role": "system", "content": system_prompt}]
+    messages.extend(history)  # user and assistant messages
+
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=8.0) as client:
             response = await client.post(
                 "https://api.groq.com/openai/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {GROQ_API_KEY}",
-                    "Content-Type": "application/json"
-                },
+                headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
                 json={
                     "model": LLAMA3_MODEL,
-                    "messages": [
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": user_message}
-                    ],
-                    "temperature": 0.5,
-                    "max_tokens": 120
+                    "messages": messages,
+                    "temperature": 0.4,
+                    "max_tokens": 80,
                 }
             )
             response.raise_for_status()
-            return response.json()["choices"][0]["message"]["content"].strip()
-    except Exception as e:
-        print("❌ Groq API Error:")
+            content = response.json()["choices"][0]["message"]["content"].strip()
+            return content
+    except Exception:
         traceback.print_exc()
-        return "Sorry, I am having trouble accessing the information currently."
+        return "Sorry, I could not access the clinic info right now."
 
-# ---------- 🔉 Call Hume TTS ----------
 async def call_hume_tts(text: str) -> str:
     try:
         audio_dir = "static/audio"
         os.makedirs(audio_dir, exist_ok=True)
-        file_name = f"{uuid.uuid4().hex}.mp3"
-        file_path = os.path.join(audio_dir, file_name)
-
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        fname = f"{uuid.uuid4().hex}.mp3"
+        path = os.path.join(audio_dir, fname)
+        async with httpx.AsyncClient(timeout=25.0) as client:
             response = await client.post(
                 "https://api.hume.ai/v0/tts/file",
-                headers={
-                    "X-Hume-Api-Key": HUME_API_KEY,
-                    "Content-Type": "application/json"
-                },
+                headers={"X-Hume-Api-Key": HUME_API_KEY, "Content-Type": "application/json"},
                 json={
-                    "utterances": [
-                        {
-                            "text": text,
-                            "description": VOICE_DESCRIPTION
-                        }
-                    ],
-                    "format": {
-                        "type": "mp3",
-                        "bitrate_kbps": 48
-                    },
-                    "num_generations": 1
+                    "utterances": [{"text": text, "description": VOICE_DESCRIPTION}],
+                    "format": {"type": "mp3", "bitrate_kbps": 48},
+                    "num_generations": 1,
                 }
             )
             response.raise_for_status()
-            with open(file_path, "wb") as f:
+            with open(path, "wb") as f:
                 f.write(response.content)
-            return f"/static/audio/{file_name}"
-    except Exception as e:
-        print("❌ Hume API Error:")
+        return f"/static/audio/{fname}"
+    except Exception:
         traceback.print_exc()
         return ""
 
-# ---------- 💬 Chat Endpoint ----------
+# --- ROUTE ---
 @app.post("/api/chat")
 async def chat(request: Request):
     try:
         data = await request.json()
         user_input = data.get("message", "").strip()
-        # Client can optionally send session_id to maintain session
         session_id = data.get("session_id")
+        user_input_lower = user_input.lower()
 
-        # Create new session if none provided or unknown
+        # Create or retrieve session
         if not session_id or session_id not in booking_sessions:
             session_id = str(uuid.uuid4())
             booking_sessions[session_id] = {
                 "booking_data": {},
                 "booking_in_progress": False,
                 "awaiting_field": None,
-                "waiting_confirmation": False
+                "waiting_confirmation": False,
+                "history": []
             }
-
         session = booking_sessions[session_id]
 
-        # Normalize input to detect booking intent (simple heuristic)
-        is_booking_request = any(phrase in user_input.lower() for phrase in [
-            "book appointment",
-            "book a dentist",
-            "make an appointment",
-            "schedule",
-            "appointment"
-        ])
+        # --- Append user message to history ---
+        session["history"].append({"role": "user", "content": user_input})
 
-        if session["booking_in_progress"] or is_booking_request:
-            # If fresh booking start, mark booking_in_progress True
+        is_booking_keyword = any(word in user_input_lower for word in ["book", "appointment", "schedule"])
+
+        # -- Booking flow --
+        if session["booking_in_progress"] or is_booking_keyword:
             if not session["booking_in_progress"]:
                 session["booking_in_progress"] = True
 
-            # If waiting for user confirmation to finalize booking
             if session.get("waiting_confirmation"):
-                if user_input.lower() in ["yes", "y", "confirm"]:
-                    # Finalize booking (in real app store or notify staff)
-                    name = session["booking_data"].get("name", "Unknown")
-                    date = session["booking_data"].get("date", "Unknown date")
-                    time = session["booking_data"].get("time", "Unknown time")
-
-                    confirmation_msg = (f"Your appointment is booked, {name}. "
-                                        f"On {date} at {time}. Thank you for choosing Din Tannklinikk!")
-                    # Reset session booking state
+                if user_input_lower in ["yes", "y", "confirm"]:
+                    d = session["booking_data"]
+                    confirm_msg = f"Your appointment is booked, {d.get('name','')}, on {d.get('date','')} at {d.get('time','')}. Thank you!"
+                    # Clear session data (can be improved to keep history if needed)
                     booking_sessions.pop(session_id, None)
-
-                    audio_url = await call_hume_tts(confirmation_msg)
+                    audio_url = await call_hume_tts(confirm_msg)
+                    # Append bot answer to history (not necessary, session cleared)
                     return JSONResponse({
-                        "response": confirmation_msg,
+                        "response": confirm_msg,
                         "audio_url": audio_url,
-                        "session_id": session_id
+                        "session_id": session_id,
                     })
-                elif user_input.lower() in ["no", "n", "cancel"]:
-                    cancel_msg = "Booking cancelled. Let me know if you want to do anything else."
-                    # Reset session booking state
+                elif user_input_lower in ["no", "n", "cancel"]:
+                    cancel_msg = "Booking cancelled. Let me know if you want to book again."
                     booking_sessions.pop(session_id, None)
                     audio_url = await call_hume_tts(cancel_msg)
                     return JSONResponse({
                         "response": cancel_msg,
                         "audio_url": audio_url,
-                        "session_id": session_id
+                        "session_id": session_id,
                     })
                 else:
-                    # Ask again for confirmation
-                    confirm_msg = ("Please confirm your booking by replying 'yes' or cancel by 'no'.")
-                    audio_url = await call_hume_tts(confirm_msg)
+                    ask_confirm = "Please reply 'yes' to confirm or 'no' to cancel."
+                    session["history"].append({"role": "assistant", "content": ask_confirm})
+                    audio_url = await call_hume_tts(ask_confirm)
                     return JSONResponse({
-                        "response": confirm_msg,
+                        "response": ask_confirm,
                         "audio_url": audio_url,
-                        "session_id": session_id
+                        "session_id": session_id,
                     })
 
-            # If currently waiting for specific booking field input
+            # Gather booking fields one-by-one
             if session["awaiting_field"]:
                 session["booking_data"][session["awaiting_field"]] = user_input
                 session["awaiting_field"] = None
-
-            # Check which booking field is missing and ask for it
             for field in REQUIRED_BOOKING_FIELDS:
                 if field not in session["booking_data"] or not session["booking_data"][field].strip():
                     session["awaiting_field"] = field
                     prompt = FIELD_PROMPTS[field]
+                    session["history"].append({"role": "assistant", "content": prompt})
                     audio_url = await call_hume_tts(prompt)
                     return JSONResponse({
                         "response": prompt,
                         "audio_url": audio_url,
-                        "session_id": session_id
+                        "session_id": session_id,
                     })
 
-            # All required fields collected, ask for confirmation
-            booking_data = session["booking_data"]
-            confirmation_text = (
-                f"Thanks {booking_data['name']}. Please confirm your appointment on "
-                f"{booking_data['date']} at {booking_data['time']}. Confirm? (yes/no)"
-            )
+            d = session["booking_data"]
+            conf_text = f"Thanks {d['name']}. Confirm appointment on {d['date']} at {d['time']}? (yes/no)"
             session["waiting_confirmation"] = True
-            audio_url = await call_hume_tts(confirmation_text)
+            session["history"].append({"role": "assistant", "content": conf_text})
+            audio_url = await call_hume_tts(conf_text)
             return JSONResponse({
-                "response": confirmation_text,
+                "response": conf_text,
                 "audio_url": audio_url,
-                "session_id": session_id
+                "session_id": session_id,
             })
 
-        else:
-            # Handle normal queries about services/pricing/clinic info
-            ai_reply = await call_groq_api(user_input)
-            audio_url = await call_hume_tts(ai_reply)
-            return JSONResponse({
-                "response": ai_reply,
-                "audio_url": audio_url,
-                "session_id": session_id
-            })
+        # --- Quick shortcut replies before fallback to LLM ---
+        if "service" in user_input_lower or "treatment" in user_input_lower:
+            msg = get_services_reply()
+            session["history"].append({"role": "assistant", "content": msg})
+            audio_url = await call_hume_tts(msg)
+            return JSONResponse({"response": msg, "audio_url": audio_url, "session_id": session_id})
+
+        if "price" in user_input_lower or "cost" in user_input_lower:
+            price_msg = lookup_service_price(user_input_lower)
+            if price_msg:
+                session["history"].append({"role": "assistant", "content": price_msg})
+                audio_url = await call_hume_tts(price_msg)
+                return JSONResponse({"response": price_msg, "audio_url": audio_url, "session_id": session_id})
+
+        if any(k in user_input_lower for k in ["doctor", "dentist", "staff", "team"]):
+            doc_msg = get_doctors_reply()
+            session["history"].append({"role": "assistant", "content": doc_msg})
+            audio_url = await call_hume_tts(doc_msg)
+            return JSONResponse({"response": doc_msg, "audio_url": audio_url, "session_id": session_id})
+
+        if any(k in user_input_lower for k in ["address", "where", "location", "open", "hour", "contact"]):
+            loc_msg = get_location_reply()
+            session["history"].append({"role": "assistant", "content": loc_msg})
+            audio_url = await call_hume_tts(loc_msg)
+            return JSONResponse({"response": loc_msg, "audio_url": audio_url, "session_id": session_id})
+
+        if "book" in user_input_lower:
+            book_msg = get_booking_contact_reply()
+            session["history"].append({"role": "assistant", "content": book_msg})
+            audio_url = await call_hume_tts(book_msg)
+            return JSONResponse({"response": book_msg, "audio_url": audio_url, "session_id": session_id})
+
+        if any(k in user_input_lower for k in ["nav", "insurance", "pay", "installment", "helfo"]):
+            pay_msg = get_payment_reply()
+            session["history"].append({"role": "assistant", "content": pay_msg})
+            audio_url = await call_hume_tts(pay_msg)
+            return JSONResponse({"response": pay_msg, "audio_url": audio_url, "session_id": session_id})
+
+        if any(k in user_input_lower for k in ["review", "experience", "good", "best"]):
+            rev_msg = get_reviews_reply()
+            session["history"].append({"role": "assistant", "content": rev_msg})
+            audio_url = await call_hume_tts(rev_msg)
+            return JSONResponse({"response": rev_msg, "audio_url": audio_url, "session_id": session_id})
+
+        # --- Fallback: Call LLM with full history ---
+        ai_reply = await call_groq_api_with_history(SYSTEM_PROMPT, session["history"])
+        session["history"].append({"role": "assistant", "content": ai_reply})
+        audio_url = await call_hume_tts(ai_reply)
+
+        return JSONResponse({
+            "response": ai_reply,
+            "audio_url": audio_url,
+            "session_id": session_id
+        })
 
     except Exception as e:
-        print("❌ Internal Server Error")
         traceback.print_exc()
         return PlainTextResponse(f"Error: {e}", status_code=500)
 
-
-# ---------- Run app ----------
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8080))
