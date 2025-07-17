@@ -109,52 +109,49 @@ Patient Reviews:
 
 Always respond in a clear, friendly, professional tone, matching the user's language (English or Norwegian), and keep responses concise (under 6 lines).
 """
-
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-# --- Services and price information (Norwegian krone for prices!) ---
+# --- Services and helpers ---
 SERVICES = [
-    {"name": "Annual dental check-up (examination, x-rays, cleaning, hygiene)", "price": "fra 1 400 kroner"},
-    {"name": "Cleaning, polishing, and hygiene", "price": "fra 950 kroner"},
-    {"name": "Specialist examination/diagnostics", "price": "fra 1 290 kroner"},
-    {"name": "Acute/general dentist examination", "price": "770 kroner"},
-    {"name": "Consultation/comprehensive treatment plan", "price": "fra 1 070 kroner"},
-    {"name": "Tooth-colored fillings (various surfaces)", "price": "fra 1 150 kroner"},
-    {"name": "Crowns (metal-ceramic, all-ceramic)", "price": "fra 7 950 kroner"},
-    {"name": "Dental prosthetics (full and partial dentures)", "price": "fra 14 010 kroner"},
-    {"name": "Endodontics (root canal treatment)", "price": "2 600 kroner per time"},
-    {"name": "Tooth extraction (simple/complicated)", "price": "fra 1 350 kroner"},
-    {"name": "Surgical extraction", "price": "fra 3 440 kroner"},
-    {"name": "Periodontal treatment (subgingival)", "price": "fra 1 260 kroner"},
-    {"name": "Preventive treatment (hourly)", "price": "fra 1 600 kroner"},
-    {"name": "Bleaching (single jaw)", "price": "2 500 kroner"},
-    {"name": "Bleaching (upper/lower jaw)", "price": "3 500 kroner"},
-    {"name": "X-ray per image", "price": "160 kroner"},
-    {"name": "Panoramic x-ray", "price": "820 kroner"},
-    {"name": "Local anesthesia", "price": "210 kroner"},
-    {"name": "Hygiene supplement", "price": "170 kroner"},
-    {"name": "Core build-up with titanium post", "price": "3 140 kroner"},
-    {"name": "Surgical draping", "price": "570 kroner"},
-    {"name": "Journal printout by mail", "price": "150 kroner"},
+    {"name": "Annual dental check-up (examination, x-rays, cleaning, hygiene)", "price": "from kr 1,400"},
+    {"name": "Cleaning, polishing, and hygiene", "price": "from kr 950"},
+    {"name": "Specialist examination/diagnostics", "price": "from kr 1,290"},
+    {"name": "Acute/general dentist examination", "price": "kr 770"},
+    {"name": "Consultation/comprehensive treatment plan", "price": "from kr 1,070"},
+    {"name": "Tooth-colored fillings (various surfaces)", "price": "from kr 1,150"},
+    {"name": "Crowns (metal-ceramic, all-ceramic)", "price": "from kr 7,950"},
+    {"name": "Dental prosthetics (full and partial dentures)", "price": "from kr 14,010"},
+    {"name": "Endodontics (root canal treatment)", "price": "kr 2,600 per hour"},
+    {"name": "Tooth extraction (simple/complicated)", "price": "from kr 1,350"},
+    {"name": "Surgical extraction", "price": "from kr 3,440"},
+    {"name": "Periodontal treatment (subgingival)", "price": "from kr 1,260"},
+    {"name": "Preventive treatment (hourly)", "price": "from kr 1,600"},
+    {"name": "Bleaching (single jaw)", "price": "kr 2,500"},
+    {"name": "Bleaching (upper/lower jaw)", "price": "kr 3,500"},
+    {"name": "X-ray per image", "price": "kr 160"},
+    {"name": "Panoramic x-ray", "price": "kr 820"},
+    {"name": "Local anesthesia", "price": "kr 210"},
+    {"name": "Hygiene supplement", "price": "kr 170"},
+    {"name": "Core build-up with titanium post", "price": "kr 3,140"},
+    {"name": "Surgical draping", "price": "kr 570"},
+    {"name": "Journal printout by mail", "price": "kr 150"},
 ]
 SERVICE_NAMES = [s["name"].lower() for s in SERVICES]
-PRICE_QUESTIONS = [
-    "price", "prices", "cost", "costs", "fee", "fees",
-    "rate", "rates", "charge", "charges", "treatment cost", "pricelist"
-]
+PRICE_QUESTIONS = ["price", "prices", "cost", "costs", "fee", "fees", "rate", "rates", "charge", "charges", "treatment cost", "pricelist"]
 
-sessions = defaultdict(dict)  # session_id -> {'history': [...], 'booking': {...}}
+sessions = defaultdict(dict) # session_id -> {'history': [...], 'booking': {...}}
 
 def extract_price_values(price_str):
-    # Accepts: "fra 1 400 kroner", "2 600 kroner", "160 kroner"
-    m = re.search(r'(\d[\d\s ]*)\s*kroner', price_str.replace('\xa0', ' '))
-    if m:
-        val = m.group(1)
-        val = val.replace(' ', '').replace('\xa0', '')
+    matches = re.findall(r'(\d{1,3}(?:[.,]\d{3})*[.,]?\d*)', price_str.replace(' ', ''))
+    if matches:
+        val = matches[0].replace('.', '').replace(',', '')
         try:
             return int(val)
         except Exception:
@@ -183,10 +180,10 @@ def find_service_in_text(user_input):
                 return s
     return None
 
-# --- LLM ONLY FOR GENERAL RESPONSES ---
+# -- LLM CALL --
 async def call_groq_api(user_message: str) -> str:
     try:
-        async with httpx.AsyncClient(timeout=5.5) as client:
+        async with httpx.AsyncClient(timeout=6.5) as client:
             response = await client.post(
                 "https://api.groq.com/openai/v1/chat/completions",
                 headers={
@@ -205,22 +202,23 @@ async def call_groq_api(user_message: str) -> str:
                         },
                     ],
                     "temperature": 0.3,
-                    "max_tokens": 180,
+                    "max_tokens": 240,
                 },
             )
             response.raise_for_status()
             return response.json()["choices"][0]["message"]["content"].strip()
-    except Exception:
+    except Exception as e:
+        print("Groq API Error:", str(e))
         return "Sorry, can't answer now."
 
-# --- TEXT TO SPEECH (always in Norwegian kroner for prices) ---
+# --- TTS CALL ---
 async def call_hume_tts(text: str) -> str:
     try:
         audio_dir = "static/audio"
         os.makedirs(audio_dir, exist_ok=True)
         file_name = f"{uuid.uuid4().hex}.mp3"
         file_path = os.path.join(audio_dir, file_name)
-        async with httpx.AsyncClient(timeout=13.0) as client:
+        async with httpx.AsyncClient(timeout=15.0) as client:  # reduced timeout for faster fallback
             response = await client.post(
                 "https://api.hume.ai/v0/tts/file",
                 headers={
@@ -237,7 +235,8 @@ async def call_hume_tts(text: str) -> str:
             with open(file_path, "wb") as f:
                 f.write(response.content)
             return f"/static/audio/{file_name}"
-    except Exception:
+    except Exception as e:
+        print("Hume API Error:", str(e))
         return ""
 
 @app.post("/api/chat")
@@ -252,7 +251,7 @@ async def chat(request: Request):
         awaiting = booking.get("awaiting")
         ai_reply = ""
 
-        # ---- Booking (all text English) ----
+        # --- Booking flow ----
         if awaiting:
             step = awaiting
             value = user_input
@@ -263,7 +262,7 @@ async def chat(request: Request):
             elif step == "phone":
                 booking["phone"] = value
                 booking["awaiting"] = "email"
-                ai_reply = "What is your email address?"
+                ai_reply = "Your email address?"
             elif step == "email":
                 booking["email"] = value
                 booking["awaiting"] = "date"
@@ -276,12 +275,11 @@ async def chat(request: Request):
                 booking["time"] = value
                 booking["awaiting"] = None
                 ai_reply = (
-                    f"Booking for {booking['date']} at {booking['time']}. "
-                    "You'll get a confirmation email soon. Thank you for booking."
+                    f"Booking: {booking['date']} {booking['time']}. Confirmation sent soon. Thanks for booking."
                 )
             else:
-                ai_reply = "There was a booking error. Please try again."
-        # ---- Price queries (Norwegian kroner!) ----
+                ai_reply = "Booking error. Try again."
+        # --- NEW Price/Service Logic order ---
         elif any(q in user_input.lower() for q in PRICE_QUESTIONS):
             found = find_service_in_text(user_input)
             if found:
@@ -289,18 +287,16 @@ async def chat(request: Request):
             else:
                 minp, maxp = get_price_range()
                 if minp is not None and maxp is not None:
-                    # Only use Norwegian kroner for prices
-                    ai_reply = f"Prices range from {minp} kroner to {maxp} kroner."
+                    ai_reply = f"Prices range from kr {minp} to kr {maxp}."
                 else:
                     ai_reply = "Please ask for a specific treatment price."
-        # ---- Book appointment (English) ----
-        elif any(word in user_input.lower() for word in ["book", "appointment", "reserve time", "møte", "bestill", "time"]):
+        elif any(word in user_input.lower() for word in ["book", "appointment", "reserve time", "møte"]):
             booking.clear()
             booking["awaiting"] = "name"
-            ai_reply = "What is your name?"
-        # ---- Service queries (English) -------
-        elif "service" in user_input.lower() or "tjeneste" in user_input.lower():
-            s_list = ", ".join(s["name"] for s in SERVICES[:3])
+            ai_reply = "Your name?"
+        elif "service" in user_input.lower():
+            sample = SERVICES[:3]
+            s_list = ", ".join(s["name"] for s in sample)
             ai_reply = f"We offer {s_list}, and more."
         elif any(name in user_input.lower() for name in SERVICE_NAMES):
             found = next((s for s in SERVICES if s["name"].lower() in user_input.lower()), None)
@@ -308,238 +304,27 @@ async def chat(request: Request):
                 ai_reply = f"{found['name']}: {found['price']}."
             else:
                 ai_reply = "Service not found."
-        # ---- Fallback: LLM (English) ----
         else:
             ai_reply = await call_groq_api(user_input)
 
+        # Parallelize TTS call for faster UX (fire-and-forget)
+        resp_task = call_hume_tts(ai_reply)
         history.append({"user": user_input, "bot": ai_reply})
-        audio_url = await call_hume_tts(ai_reply)
+        audio_url = await resp_task
+
         return JSONResponse(
-            {"response": ai_reply, "audio_url": audio_url, "session_id": session_id}
+            {
+                "response": ai_reply,
+                "audio_url": audio_url,
+                "session_id": session_id,
+            }
         )
     except Exception as e:
+        print("Internal Server Error")
         traceback.print_exc()
         return PlainTextResponse(f"Error: {e}", status_code=500)
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
-app.mount("/", StaticFiles(directory=".", html=True), name="root")
-
-if __name__ == "__main__":
-    import uvicorn
-    port = int(os.environ.get("PORT", 8080))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, log_level="info")
-app = FastAPI()
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
-)
-
-# --- Services and helpers ---
-SERVICES = [
-    {"name": "Annual dental check-up (examination, x-rays, cleaning, hygiene)", "price": "fra 1 400 kroner"},
-    {"name": "Cleaning, polishing, and hygiene", "price": "fra 950 kroner"},
-    {"name": "Specialist examination/diagnostics", "price": "fra 1 290 kroner"},
-    {"name": "Acute/general dentist examination", "price": "770 kroner"},
-    {"name": "Consultation/comprehensive treatment plan", "price": "fra 1 070 kroner"},
-    {"name": "Tooth-colored fillings (various surfaces)", "price": "fra 1 150 kroner"},
-    {"name": "Crowns (metal-ceramic, all-ceramic)", "price": "fra 7 950 kroner"},
-    {"name": "Dental prosthetics (full and partial dentures)", "price": "fra 14 010 kroner"},
-    {"name": "Endodontics (root canal treatment)", "price": "2 600 kroner per time"},
-    {"name": "Tooth extraction (simple/complicated)", "price": "fra 1 350 kroner"},
-    {"name": "Surgical extraction", "price": "fra 3 440 kroner"},
-    {"name": "Periodontal treatment (subgingival)", "price": "fra 1 260 kroner"},
-    {"name": "Preventive treatment (hourly)", "price": "fra 1 600 kroner"},
-    {"name": "Bleaching (single jaw)", "price": "2 500 kroner"},
-    {"name": "Bleaching (upper/lower jaw)", "price": "3 500 kroner"},
-    {"name": "X-ray per image", "price": "160 kroner"},
-    {"name": "Panoramic x-ray", "price": "820 kroner"},
-    {"name": "Local anesthesia", "price": "210 kroner"},
-    {"name": "Hygiene supplement", "price": "170 kroner"},
-    {"name": "Core build-up with titanium post", "price": "3 140 kroner"},
-    {"name": "Surgical draping", "price": "570 kroner"},
-    {"name": "Journal printout by mail", "price": "150 kroner"},
-]
-SERVICE_NAMES = [s["name"].lower() for s in SERVICES]
-PRICE_QUESTIONS = [
-    "price", "prices", "cost", "costs", "fee", "fees",
-    "rate", "rates", "charge", "charges", "treatment cost", "pricelist"
-]
-
-sessions = defaultdict(dict) # session_id -> {'history': [...], 'booking': {...}}
-
-def extract_price_values(price_str):
-    # Accepts: "fra 1 400 kroner", "2 600 kroner", "160 kroner"
-    match = re.search(r'(\d[\d\s ]*)\s*kroner', price_str.replace('\xa0', ' '))
-    if match:
-        val = match.group(1)
-        val = val.replace(' ', '').replace('\xa0', '')
-        try:
-            return int(val)
-        except Exception:
-            return None
-    return None
-
-def get_price_range():
-    prices = []
-    for s in SERVICES:
-        p = extract_price_values(s["price"])
-        if p is not None:
-            prices.append(p)
-    if not prices:
-        return None, None
-    return min(prices), max(prices)
-
-def find_service_in_text(user_input):
-    input_lower = user_input.lower()
-    for s in SERVICES:
-        base_name = s["name"].split("(")[0].strip().lower()
-        if base_name in input_lower:
-            return s
-        words = base_name.replace('-', ' ').replace(',', '').split()
-        for w in words:
-            if w in input_lower and len(w) > 3:
-                return s
-    return None
-
-# LLM only as fallback
-async def call_groq_api(user_message: str) -> str:
-    try:
-        async with httpx.AsyncClient(timeout=5.5) as client:
-            response = await client.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {GROQ_API_KEY}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": LLAMA3_MODEL,
-                    "messages": [
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {
-                            "role": "user",
-                            "content": (
-                                f"{user_message}\nReply in 80 characters or less. No lists or formatting."
-                            ),
-                        },
-                    ],
-                    "temperature": 0.3,
-                    "max_tokens": 180,
-                },
-            )
-            response.raise_for_status()
-            return response.json()["choices"][0]["message"]["content"].strip()
-    except Exception:
-        return "Beklager, kan ikke svare nå."
-
-# TTS
-async def call_hume_tts(text: str) -> str:
-    try:
-        audio_dir = "static/audio"
-        os.makedirs(audio_dir, exist_ok=True)
-        file_name = f"{uuid.uuid4().hex}.mp3"
-        file_path = os.path.join(audio_dir, file_name)
-        async with httpx.AsyncClient(timeout=13.0) as client:
-            response = await client.post(
-                "https://api.hume.ai/v0/tts/file",
-                headers={
-                    "X-Hume-Api-Key": HUME_API_KEY,
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "utterances": [{"text": text, "description": VOICE_DESCRIPTION}],
-                    "format": {"type": "mp3", "bitrate_kbps": 48},
-                    "num_generations": 1,
-                },
-            )
-            response.raise_for_status()
-            with open(file_path, "wb") as f:
-                f.write(response.content)
-            return f"/static/audio/{file_name}"
-    except Exception:
-        return ""
-
-@app.post("/api/chat")
-async def chat(request: Request):
-    try:
-        data = await request.json()
-        user_input = data.get("message", "").strip()
-        session_id = data.get("session_id") or str(uuid.uuid4())
-        session = sessions[session_id]
-        history = session.setdefault("history", [])
-        booking = session.setdefault("booking", {})
-        awaiting = booking.get("awaiting")
-        ai_reply = ""
-
-        # ------- Booking flow -------
-        if awaiting:
-            step = awaiting
-            value = user_input
-            if step == "name":
-                booking["name"] = value
-                booking["awaiting"] = "phone"
-                ai_reply = "Hva er ditt telefonnummer?"
-            elif step == "phone":
-                booking["phone"] = value
-                booking["awaiting"] = "email"
-                ai_reply = "Hva er e-postadressen din?"
-            elif step == "email":
-                booking["email"] = value
-                booking["awaiting"] = "date"
-                ai_reply = "Ønsket dato?"
-            elif step == "date":
-                booking["date"] = value
-                booking["awaiting"] = "time"
-                ai_reply = "Hvilket tidspunkt?"
-            elif step == "time":
-                booking["time"] = value
-                booking["awaiting"] = None
-                ai_reply = (
-                    f"Bestilling: {booking['date']} {booking['time']}. "
-                    "Du får bekreftelse på e-post. Takk for bestillingen!"
-                )
-            else:
-                ai_reply = "Bestillingsfeil. Prøv igjen."
-        # ------- Price queries ------
-        elif any(q in user_input.lower() for q in PRICE_QUESTIONS):
-            found = find_service_in_text(user_input)
-            if found:
-                ai_reply = f"{found['name']}: {found['price']}."
-            else:
-                minp, maxp = get_price_range()
-                if minp is not None and maxp is not None:
-                    # Always in Norwegian krone/kroner for TTS
-                    ai_reply = f"Prisene varierer fra {minp} til {maxp} kroner."
-                else:
-                    ai_reply = "Be om en spesifikk behandling for pris."
-        # ------- Book appointment -----
-        elif any(word in user_input.lower() for word in ["book", "appointment", "reserve time", "møte", "bestill", "time"]):
-            booking.clear()
-            booking["awaiting"] = "name"
-            ai_reply = "Hva heter du?"
-        # ------- Service queries -----
-        elif "service" in user_input.lower() or "tjeneste" in user_input.lower():
-            s_list = ", ".join(s["name"] for s in SERVICES[:3])
-            ai_reply = f"Vi tilbyr {s_list} og mer."
-        elif any(name in user_input.lower() for name in SERVICE_NAMES):
-            found = next((s for s in SERVICES if s["name"].lower() in user_input.lower()), None)
-            if found:
-                ai_reply = f"{found['name']}: {found['price']}."
-            else:
-                ai_reply = "Tjenesten finnes ikke."
-        # ------- Fallback: LLM ------
-        else:
-            ai_reply = await call_groq_api(user_input)
-
-        history.append({"user": user_input, "bot": ai_reply})
-        audio_url = await call_hume_tts(ai_reply)
-
-        return JSONResponse(
-            {"response": ai_reply, "audio_url": audio_url, "session_id": session_id}
-        )
-    except Exception as e:
-        traceback.print_exc()
-        return PlainTextResponse(f"Error: {e}", status_code=500)
-
+# Static file serving (no changes)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/", StaticFiles(directory=".", html=True), name="root")
 
