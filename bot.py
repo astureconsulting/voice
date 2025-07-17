@@ -298,6 +298,8 @@ Always respond in a clear, friendly, professional tone, matching the user's lang
 #     uvicorn.run("main:app", host="0.0.0.0", port=port)
 # --- CORS & FASTAPI SETUP ---
 # --- CORS & FASTAPI SETUP ---
+
+# --- CORS & FASTAPI SETUP ---
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -337,6 +339,31 @@ SERVICE_NAMES = [s["name"].lower() for s in SERVICES]
 
 # --- IN-MEMORY SESSION STORE ---
 sessions = defaultdict(dict)  # session_id -> {'history': [...], 'booking': {...}}
+
+def extract_price_values(price_str):
+    # Extracts floating price value from a string like "from kr 1,230" or "kr 450"
+    import re
+    matches = re.findall(r'(\d{1,3}(?:[.,]\d{3})*[.,]?\d*)', price_str.replace(' ', ''))
+    if matches:
+        # Convert 1,000 or 1.000 to int
+        val = matches[0].replace('.', '').replace(',', '')
+        try:
+            return int(val)
+        except Exception:
+            return None
+    return None
+
+def get_price_range():
+    prices = []
+    for s in SERVICES:
+        p = extract_price_values(s["price"])
+        if p is not None:
+            prices.append(p)
+    if not prices:
+        return None, None
+    return min(prices), max(prices)
+
+PRICE_QUESTIONS = ["price", "prices", "cost", "costs", "fee", "fees", "rate", "rates", "charge", "charges", "treatment cost", "pricelist"]
 
 # --- LLM CALL ---
 async def call_groq_api(user_message: str) -> str:
@@ -404,7 +431,7 @@ async def call_hume_tts(text: str) -> str:
 async def chat(request: Request):
     try:
         data = await request.json()
-        user_input = data.get("message", "")
+        user_input = data.get("message", "").strip()
         session_id = data.get("session_id") or str(uuid.uuid4())
         session = sessions[session_id]
         history = session.setdefault("history", [])
@@ -412,10 +439,10 @@ async def chat(request: Request):
         awaiting = booking.get("awaiting")
         ai_reply = ""
 
-        # Booking flow: short and direct
+        # Booking flow
         if awaiting:
             step = awaiting
-            value = user_input.strip()
+            value = user_input
             if step == "name":
                 booking["name"] = value
                 booking["awaiting"] = "phone"
@@ -440,6 +467,33 @@ async def chat(request: Request):
                 )
             else:
                 ai_reply = "Booking error. Try again."
+        # Price/range queries
+        elif any(q in user_input.lower() for q in PRICE_QUESTIONS):
+            # Is the user asking for prices in general?
+            if all(not s["name"].split("(")[0].strip().lower() in user_input.lower() for s in SERVICES):
+                # No specific service, so output range
+                minp, maxp = get_price_range()
+                if minp is not None and maxp is not None:
+                    ai_reply = f"Prices range from kr {minp} to kr {maxp}."
+                else:
+                    ai_reply = "Please ask for a specific treatment price."
+            else:
+                # Try to find the service mentioned in the query
+                found = next((
+                    s for s in SERVICES
+                    if s["name"].split("(")[0].strip().lower() in user_input.lower()
+                ), None)
+                if not found:
+                    # If not found by this method, try partial/fuzzy match
+                    found = next(
+                        (s for s in SERVICES if any(
+                            word in user_input.lower() for word in s["name"].lower().split())),
+                        None
+                    )
+                if found:
+                    ai_reply = f"{found['name']}: {found['price']}."
+                else:
+                    ai_reply = await call_groq_api(user_input)
         elif any(word in user_input.lower() for word in ["book", "appointment", "reserve time", "møte"]):
             booking.clear()
             booking["awaiting"] = "name"
@@ -454,10 +508,7 @@ async def chat(request: Request):
                 ai_reply = f"{found['name']}: {found['price']}."
             else:
                 ai_reply = "Service not found."
-        elif "price" in user_input.lower() or "cost" in user_input.lower():
-            ai_reply = "Check-up from kr 1,400. Filling from kr 1,150. Extraction from kr 1,350."
         else:
-            # LLM handles brevity!
             ai_reply = await call_groq_api(user_input)
 
         history.append({"user": user_input, "bot": ai_reply})
