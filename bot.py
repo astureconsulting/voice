@@ -303,13 +303,12 @@ Always respond in a clear, friendly, professional tone, matching the user's lang
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Restrict this in production!
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --- SERVICES WITH ALL ITEMS INCLUDED ---
 SERVICES = [
     {"name": "Annual dental check-up (examination, x-rays, cleaning, hygiene)", "price": "from kr 1,400"},
     {"name": "Cleaning, polishing, and hygiene", "price": "from kr 950"},
@@ -337,15 +336,13 @@ SERVICES = [
 
 SERVICE_NAMES = [s["name"].lower() for s in SERVICES]
 
-# --- IN-MEMORY SESSION STORE ---
 sessions = defaultdict(dict)  # session_id -> {'history': [...], 'booking': {...}}
 
 def extract_price_values(price_str):
-    # Extracts floating price value from a string like "from kr 1,230" or "kr 450"
+    # Extracts price as int from strings like "from kr 1,400" or "kr 400"
     import re
     matches = re.findall(r'(\d{1,3}(?:[.,]\d{3})*[.,]?\d*)', price_str.replace(' ', ''))
     if matches:
-        # Convert 1,000 or 1.000 to int
         val = matches[0].replace('.', '').replace(',', '')
         try:
             return int(val)
@@ -364,6 +361,19 @@ def get_price_range():
     return min(prices), max(prices)
 
 PRICE_QUESTIONS = ["price", "prices", "cost", "costs", "fee", "fees", "rate", "rates", "charge", "charges", "treatment cost", "pricelist"]
+
+def find_service_in_text(user_input):
+    input_lower = user_input.lower()
+    for s in SERVICES:
+        base_name = s["name"].split("(")[0].strip().lower()
+        if base_name in input_lower:
+            return s
+        # Also check for key nouns from service ("cleaning", "crown", "root canal", etc)
+        words = base_name.replace('-', ' ').replace(',', '').split()
+        for w in words:
+            if w in input_lower and len(w) > 3:
+                return s
+    return None
 
 # --- LLM CALL ---
 async def call_groq_api(user_message: str) -> str:
@@ -426,7 +436,6 @@ async def call_hume_tts(text: str) -> str:
         traceback.print_exc()
         return ""
 
-# --- CHAT / BOOKING ENDPOINT ---
 @app.post("/api/chat")
 async def chat(request: Request):
     try:
@@ -467,33 +476,17 @@ async def chat(request: Request):
                 )
             else:
                 ai_reply = "Booking error. Try again."
-        # Price/range queries
+        # --- NEW Price/Service Logic order ---
         elif any(q in user_input.lower() for q in PRICE_QUESTIONS):
-            # Is the user asking for prices in general?
-            if all(not s["name"].split("(")[0].strip().lower() in user_input.lower() for s in SERVICES):
-                # No specific service, so output range
+            found = find_service_in_text(user_input)
+            if found:
+                ai_reply = f"{found['name']}: {found['price']}."
+            else:
                 minp, maxp = get_price_range()
                 if minp is not None and maxp is not None:
                     ai_reply = f"Prices range from kr {minp} to kr {maxp}."
                 else:
                     ai_reply = "Please ask for a specific treatment price."
-            else:
-                # Try to find the service mentioned in the query
-                found = next((
-                    s for s in SERVICES
-                    if s["name"].split("(")[0].strip().lower() in user_input.lower()
-                ), None)
-                if not found:
-                    # If not found by this method, try partial/fuzzy match
-                    found = next(
-                        (s for s in SERVICES if any(
-                            word in user_input.lower() for word in s["name"].lower().split())),
-                        None
-                    )
-                if found:
-                    ai_reply = f"{found['name']}: {found['price']}."
-                else:
-                    ai_reply = await call_groq_api(user_input)
         elif any(word in user_input.lower() for word in ["book", "appointment", "reserve time", "møte"]):
             booking.clear()
             booking["awaiting"] = "name"
@@ -526,7 +519,6 @@ async def chat(request: Request):
         traceback.print_exc()
         return PlainTextResponse(f"Error: {e}", status_code=500)
 
-# -- STATIC FILE SERVE --
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/", StaticFiles(directory=".", html=True), name="root")
 
