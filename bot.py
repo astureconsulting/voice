@@ -484,7 +484,7 @@ async def chat(request: Request):
             else:
                 minp, maxp = get_price_range()
                 if minp is not None and maxp is not None:
-                    ai_reply = f"Prices range from kr {minp} to kr {maxp}."
+                    ai_reply = f"Prices range from krone 950 (9 hundred & 50 krones) to krone 14010 (14 thousan 10 krones)."
                 else:
                     ai_reply = "Please ask for a specific treatment price."
         elif any(word in user_input.lower() for word in ["book", "appointment", "reserve time", "møte"]):
