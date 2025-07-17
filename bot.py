@@ -19,7 +19,7 @@ VOICE_DESCRIPTION = "friendly, natural young assistant, warm, quick response, cl
 
 SYSTEM_PROMPT = """
 You are an expert Virtual Assistant for Dintannklinikk dental clinics. Your task is to create a concise, accurate, and well-structured overview of Din Tannklinikk (dintannklinikk.no), ensuring that all major aspects of the clinic are covered. When generating content, always include the following main points:
-
+Always answer in 80 characters or less. Write clearly with no special formatting.
 Clinic Introduction:
 - Din Tannklinikk is located in Helsfyr, Oslo.
 - Dedicated to providing comfortable and modern dental care with over 20 years of experience.
@@ -297,6 +297,7 @@ Always respond in a clear, friendly, professional tone, matching the user's lang
 #     port = int(os.environ.get("PORT", 8080))
 #     uvicorn.run("main:app", host="0.0.0.0", port=port)
 # --- CORS & FASTAPI SETUP ---
+# --- CORS & FASTAPI SETUP ---
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -337,11 +338,6 @@ SERVICE_NAMES = [s["name"].lower() for s in SERVICES]
 # --- IN-MEMORY SESSION STORE ---
 sessions = defaultdict(dict)  # session_id -> {'history': [...], 'booking': {...}}
 
-# --- RESPONSE CLEANER ---
-def clean_and_shorten(text, max_len=80):
-    text = text.replace('*', '').replace('#', '').replace('AI:', '')
-    return text.strip()[:max_len]
-
 # --- LLM CALL ---
 async def call_groq_api(user_message: str) -> str:
     try:
@@ -359,8 +355,7 @@ async def call_groq_api(user_message: str) -> str:
                         {
                             "role": "user",
                             "content": (
-                                f"{user_message}\nRespond in less than 80 characters. "
-                                "No asterisks, hashes, or extra formatting."
+                                f"{user_message}\nReply in 80 characters or less. No lists or formatting."
                             ),
                         },
                     ],
@@ -417,18 +412,18 @@ async def chat(request: Request):
         awaiting = booking.get("awaiting")
         ai_reply = ""
 
-        # Booking flow
+        # Booking flow: short and direct
         if awaiting:
             step = awaiting
             value = user_input.strip()
             if step == "name":
                 booking["name"] = value
                 booking["awaiting"] = "phone"
-                ai_reply = "Your phone number?"
+                ai_reply = "What is your phone number?"
             elif step == "phone":
                 booking["phone"] = value
                 booking["awaiting"] = "email"
-                ai_reply = "Your email?"
+                ai_reply = "Your email address?"
             elif step == "email":
                 booking["email"] = value
                 booking["awaiting"] = "date"
@@ -462,12 +457,8 @@ async def chat(request: Request):
         elif "price" in user_input.lower() or "cost" in user_input.lower():
             ai_reply = "Check-up from kr 1,400. Filling from kr 1,150. Extraction from kr 1,350."
         else:
-            short_user_input = (
-                f"{user_input} (Answer in under 80 characters. No asterisks or hashes.)"
-            )
-            ai_reply = await call_groq_api(short_user_input)
-        
-        ai_reply = clean_and_shorten(ai_reply)
+            # LLM handles brevity!
+            ai_reply = await call_groq_api(user_input)
 
         history.append({"user": user_input, "bot": ai_reply})
         audio_url = await call_hume_tts(ai_reply)
