@@ -108,6 +108,194 @@ Patient Reviews:
 
 Always respond in a clear, friendly, professional tone, matching the user's language (English or Norwegian), and keep responses concise (under 6 lines).
 """
+# # --- CORS & FASTAPI SETUP ---
+# app = FastAPI()
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=["*"],  # Restrict this in production!
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
+
+# # --- SERVICES WITH ALL ITEMS INCLUDED ---
+# SERVICES = [
+#     {"name": "Annual dental check-up (examination, x-rays, cleaning, hygiene)", "price": "from kr 1,400"},
+#     {"name": "Cleaning, polishing, and hygiene", "price": "from kr 950"},
+#     {"name": "Specialist examination/diagnostics", "price": "from kr 1,290"},
+#     {"name": "Acute/general dentist examination", "price": "kr 770"},
+#     {"name": "Consultation/comprehensive treatment plan", "price": "from kr 1,070"},
+#     {"name": "Tooth-colored fillings (various surfaces)", "price": "from kr 1,150"},
+#     {"name": "Crowns (metal-ceramic, all-ceramic)", "price": "from kr 7,950"},
+#     {"name": "Dental prosthetics (full and partial dentures)", "price": "from kr 14,010"},
+#     {"name": "Endodontics (root canal treatment)", "price": "kr 2,600 per hour"},
+#     {"name": "Tooth extraction (simple/complicated)", "price": "from kr 1,350"},
+#     {"name": "Surgical extraction", "price": "from kr 3,440"},
+#     {"name": "Periodontal treatment (subgingival)", "price": "from kr 1,260"},
+#     {"name": "Preventive treatment (hourly)", "price": "from kr 1,600"},
+#     {"name": "Bleaching (single jaw)", "price": "kr 2,500"},
+#     {"name": "Bleaching (upper/lower jaw)", "price": "kr 3,500"},
+#     {"name": "X-ray per image", "price": "kr 160"},
+#     {"name": "Panoramic x-ray", "price": "kr 820"},
+#     {"name": "Local anesthesia", "price": "kr 210"},
+#     {"name": "Hygiene supplement", "price": "kr 170"},
+#     {"name": "Core build-up with titanium post", "price": "kr 3,140"},
+#     {"name": "Surgical draping", "price": "kr 570"},
+#     {"name": "Journal printout by mail", "price": "kr 150"},
+# ]
+
+# SERVICE_NAMES = [s["name"].lower() for s in SERVICES]
+
+# # --- IN-MEMORY SESSION STORE ---
+# sessions = defaultdict(dict)  # session_id -> {'history': [...], 'booking': {...}}
+
+
+# # --- LLM CALL ---
+# async def call_groq_api(user_message: str) -> str:
+#     try:
+#         async with httpx.AsyncClient(timeout=7.0) as client:
+#             response = await client.post(
+#                 "https://api.groq.com/openai/v1/chat/completions",
+#                 headers={
+#                     "Authorization": f"Bearer {GROQ_API_KEY}",
+#                     "Content-Type": "application/json",
+#                 },
+#                 json={
+#                     "model": LLAMA3_MODEL,
+#                     "messages": [
+#                         {"role": "system", "content": SYSTEM_PROMPT},
+#                         {"role": "user", "content": user_message},
+#                     ],
+#                     "temperature": 0.3,
+#                     "max_tokens": 240,
+#                 },
+#             )
+#             response.raise_for_status()
+#             return response.json()["choices"][0]["message"]["content"].strip()
+#     except Exception as e:
+#         print("Groq API Error:", str(e))
+#         traceback.print_exc()
+#         return "Sorry, I couldn't fetch an answer right now."
+
+
+# # --- TTS CALL ---
+# async def call_hume_tts(text: str) -> str:
+#     try:
+#         audio_dir = "static/audio"
+#         os.makedirs(audio_dir, exist_ok=True)
+#         file_name = f"{uuid.uuid4().hex}.mp3"
+#         file_path = os.path.join(audio_dir, file_name)
+#         async with httpx.AsyncClient(timeout=60.0) as client:
+#             response = await client.post(
+#                 "https://api.hume.ai/v0/tts/file",
+#                 headers={
+#                     "X-Hume-Api-Key": HUME_API_KEY,
+#                     "Content-Type": "application/json",
+#                 },
+#                 json={
+#                     "utterances": [{"text": text, "description": VOICE_DESCRIPTION}],
+#                     "format": {"type": "mp3", "bitrate_kbps": 48},
+#                     "num_generations": 1,
+#                 },
+#             )
+#             response.raise_for_status()
+#             with open(file_path, "wb") as f:
+#                 f.write(response.content)
+#             return f"/static/audio/{file_name}"
+#     except Exception as e:
+#         print("Hume API Error:", str(e))
+#         traceback.print_exc()
+#         return ""
+
+
+# # --- CHAT / BOOKING ENDPOINT ---
+# @app.post("/api/chat")
+# async def chat(request: Request):
+#     try:
+#         data = await request.json()
+#         user_input = data.get("message", "")
+#         session_id = data.get("session_id") or str(uuid.uuid4())
+#         session = sessions[session_id]
+#         history = session.setdefault("history", [])
+#         booking = session.setdefault("booking", {})
+#         awaiting = booking.get("awaiting")
+
+#         ai_reply = ""
+
+#         # Booking flow
+#         if awaiting:
+#             step = awaiting
+#             value = user_input.strip()
+#             if step == "name":
+#                 booking["name"] = value
+#                 booking["awaiting"] = "phone"
+#                 ai_reply = "Thank you! Could I have your phone number?"
+#             elif step == "phone":
+#                 booking["phone"] = value
+#                 booking["awaiting"] = "email"
+#                 ai_reply = "Thanks! May I have your email address?"
+#             elif step == "email":
+#                 booking["email"] = value
+#                 booking["awaiting"] = "date"
+#                 ai_reply = "What date would you like your appointment?"
+#             elif step == "date":
+#                 booking["date"] = value
+#                 booking["awaiting"] = "time"
+#                 ai_reply = "What time works best for you?"
+#             elif step == "time":
+#                 booking["time"] = value
+#                 booking["awaiting"] = None
+#                 ai_reply = (
+#                     f"Thank you, {booking['name']}! "
+#                     f"Appointment booked for {booking['date']} at {booking['time']}.\n"
+#                     f"We’ll contact you at {booking['phone']} / {booking['email']} to confirm. See you soon at Din Tannklinikk!"
+#                 )
+#             else:
+#                 ai_reply = "Sorry, something went wrong with your booking. Please try again."
+#         elif any(word in user_input.lower() for word in ["book", "appointment", "reserve time", "møte"]):
+#             booking.clear()
+#             booking["awaiting"] = "name"
+#             ai_reply = "Absolutely! Can you please provide your name?"
+#         elif "service" in user_input.lower():
+#             # List 3-4 services with many more
+#             sample = SERVICES[:4]
+#             s_list = ", ".join(s["name"] for s in sample)
+#             ai_reply = f"We offer {s_list}, and many more. Want prices or wish to book?"
+#         elif any(name in user_input.lower() for name in SERVICE_NAMES):
+#             found = next((s for s in SERVICES if s["name"].lower() in user_input.lower()), None)
+#             if found:
+#                 ai_reply = f"{found['name']} – {found['price']}."
+#             else:
+#                 ai_reply = "Sorry, I couldn't find that service."
+#         else:
+#             ai_reply = await call_groq_api(user_input)
+
+#         history.append({"user": user_input, "bot": ai_reply})
+#         audio_url = await call_hume_tts(ai_reply)
+
+#         return JSONResponse(
+#             {
+#                 "response": ai_reply,
+#                 "audio_url": audio_url,
+#                 "session_id": session_id,
+#             }
+#         )
+#     except Exception as e:
+#         print("❌ Internal Server Error")
+#         traceback.print_exc()
+#         return PlainTextResponse(f"Error: {e}", status_code=500)
+
+
+# # -- STATIC FILE SERVE --
+# app.mount("/static", StaticFiles(directory="static"), name="static")
+# app.mount("/", StaticFiles(directory=".", html=True), name="root")
+
+
+# if __name__ == "__main__":
+#     import uvicorn
+
+#     port = int(os.environ.get("PORT", 8080))
+#     uvicorn.run("main:app", host="0.0.0.0", port=port)
 # --- CORS & FASTAPI SETUP ---
 app = FastAPI()
 app.add_middleware(
@@ -149,6 +337,10 @@ SERVICE_NAMES = [s["name"].lower() for s in SERVICES]
 # --- IN-MEMORY SESSION STORE ---
 sessions = defaultdict(dict)  # session_id -> {'history': [...], 'booking': {...}}
 
+# --- RESPONSE CLEANER ---
+def clean_and_shorten(text, max_len=80):
+    text = text.replace('*', '').replace('#', '').replace('AI:', '')
+    return text.strip()[:max_len]
 
 # --- LLM CALL ---
 async def call_groq_api(user_message: str) -> str:
@@ -164,7 +356,13 @@ async def call_groq_api(user_message: str) -> str:
                     "model": LLAMA3_MODEL,
                     "messages": [
                         {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": user_message},
+                        {
+                            "role": "user",
+                            "content": (
+                                f"{user_message}\nRespond in less than 80 characters. "
+                                "No asterisks, hashes, or extra formatting."
+                            ),
+                        },
                     ],
                     "temperature": 0.3,
                     "max_tokens": 240,
@@ -175,8 +373,7 @@ async def call_groq_api(user_message: str) -> str:
     except Exception as e:
         print("Groq API Error:", str(e))
         traceback.print_exc()
-        return "Sorry, I couldn't fetch an answer right now."
-
+        return "Sorry, can't answer now."
 
 # --- TTS CALL ---
 async def call_hume_tts(text: str) -> str:
@@ -207,7 +404,6 @@ async def call_hume_tts(text: str) -> str:
         traceback.print_exc()
         return ""
 
-
 # --- CHAT / BOOKING ENDPOINT ---
 @app.post("/api/chat")
 async def chat(request: Request):
@@ -219,7 +415,6 @@ async def chat(request: Request):
         history = session.setdefault("history", [])
         booking = session.setdefault("booking", {})
         awaiting = booking.get("awaiting")
-
         ai_reply = ""
 
         # Booking flow
@@ -229,46 +424,50 @@ async def chat(request: Request):
             if step == "name":
                 booking["name"] = value
                 booking["awaiting"] = "phone"
-                ai_reply = "Thank you! Could I have your phone number?"
+                ai_reply = "Your phone number?"
             elif step == "phone":
                 booking["phone"] = value
                 booking["awaiting"] = "email"
-                ai_reply = "Thanks! May I have your email address?"
+                ai_reply = "Your email?"
             elif step == "email":
                 booking["email"] = value
                 booking["awaiting"] = "date"
-                ai_reply = "What date would you like your appointment?"
+                ai_reply = "Preferred date?"
             elif step == "date":
                 booking["date"] = value
                 booking["awaiting"] = "time"
-                ai_reply = "What time works best for you?"
+                ai_reply = "Preferred time?"
             elif step == "time":
                 booking["time"] = value
                 booking["awaiting"] = None
                 ai_reply = (
-                    f"Thank you, {booking['name']}! "
-                    f"Appointment booked for {booking['date']} at {booking['time']}.\n"
-                    f"We’ll contact you at {booking['phone']} / {booking['email']} to confirm. See you soon at Din Tannklinikk!"
+                    f"Booking: {booking['date']} {booking['time']}. Confirmation soon."
                 )
             else:
-                ai_reply = "Sorry, something went wrong with your booking. Please try again."
+                ai_reply = "Booking error. Try again."
         elif any(word in user_input.lower() for word in ["book", "appointment", "reserve time", "møte"]):
             booking.clear()
             booking["awaiting"] = "name"
-            ai_reply = "Absolutely! Can you please provide your name?"
+            ai_reply = "Your name?"
         elif "service" in user_input.lower():
-            # List 3-4 services with many more
-            sample = SERVICES[:4]
+            sample = SERVICES[:3]
             s_list = ", ".join(s["name"] for s in sample)
-            ai_reply = f"We offer {s_list}, and many more. Want prices or wish to book?"
+            ai_reply = f"We offer {s_list}, and more."
         elif any(name in user_input.lower() for name in SERVICE_NAMES):
             found = next((s for s in SERVICES if s["name"].lower() in user_input.lower()), None)
             if found:
-                ai_reply = f"{found['name']} – {found['price']}."
+                ai_reply = f"{found['name']}: {found['price']}."
             else:
-                ai_reply = "Sorry, I couldn't find that service."
+                ai_reply = "Service not found."
+        elif "price" in user_input.lower() or "cost" in user_input.lower():
+            ai_reply = "Check-up from kr 1,400. Filling from kr 1,150. Extraction from kr 1,350."
         else:
-            ai_reply = await call_groq_api(user_input)
+            short_user_input = (
+                f"{user_input} (Answer in under 80 characters. No asterisks or hashes.)"
+            )
+            ai_reply = await call_groq_api(short_user_input)
+        
+        ai_reply = clean_and_shorten(ai_reply)
 
         history.append({"user": user_input, "bot": ai_reply})
         audio_url = await call_hume_tts(ai_reply)
@@ -281,15 +480,13 @@ async def chat(request: Request):
             }
         )
     except Exception as e:
-        print("❌ Internal Server Error")
+        print("Internal Server Error")
         traceback.print_exc()
         return PlainTextResponse(f"Error: {e}", status_code=500)
-
 
 # -- STATIC FILE SERVE --
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/", StaticFiles(directory=".", html=True), name="root")
-
 
 if __name__ == "__main__":
     import uvicorn
