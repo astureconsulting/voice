@@ -472,7 +472,7 @@ async def chat(request: Request):
                 booking["time"] = value
                 booking["awaiting"] = None
                 ai_reply = (
-                    f"Booking: {booking['date']} {booking['time']}. Confirmation soon."
+                    f"Booking: {booking['date']} {booking['time']}. You will get the confirmation email soon. Thanks for booking."
                 )
             else:
                 ai_reply = "Booking error. Try again."
