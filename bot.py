@@ -256,7 +256,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 # ---------- 🔧 Configuration ----------
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "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")
-HUME_API_KEY = os.getenv("HUME_API_KEY", "Xs2MM3Xx2Y13CRfLBiLNzsaY6niZrqRsoY5yEaVstPQmt0ZI")
+HUME_API_KEY = os.getenv("HUME_API_KEY", "PeS9OER7MSDnERrXgaziLFaOpWHlVsWzl7f4wBXQqBFuIaKE")
 LLAMA3_MODEL = "llama3-8b-8192"
 VOICE_DESCRIPTION = "friendly, natural young assistant, warm, quick response, clear, enthusiastic"
 
