@@ -242,6 +242,7 @@
 
 
 
+
 import os
 import uuid
 import re
@@ -270,27 +271,28 @@ app.add_middleware(
     allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
 )
 
+# Prices in Norwegian krone for TTS quality
 SERVICES = [
-    {"name": "Annual dental check-up (examination, x-rays, cleaning, hygiene)", "price": "fra 1 400 kroner"},
+    {"name": "Annual dental check-up (examination, x-rays, cleaning, hygiene)", "price": "fra 1 400 kroner"},
     {"name": "Cleaning, polishing, and hygiene", "price": "fra 950 kroner"},
-    {"name": "Specialist examination/diagnostics", "price": "fra 1 290 kroner"},
+    {"name": "Specialist examination/diagnostics", "price": "fra 1 290 kroner"},
     {"name": "Acute/general dentist examination", "price": "770 kroner"},
-    {"name": "Consultation/comprehensive treatment plan", "price": "fra 1 070 kroner"},
-    {"name": "Tooth-colored fillings (various surfaces)", "price": "fra 1 150 kroner"},
-    {"name": "Crowns (metal-ceramic, all-ceramic)", "price": "fra 7 950 kroner"},
-    {"name": "Dental prosthetics (full and partial dentures)", "price": "fra 14 010 kroner"},
-    {"name": "Endodontics (root canal treatment)", "price": "2 600 kroner per time"},
-    {"name": "Tooth extraction (simple/complicated)", "price": "fra 1 350 kroner"},
-    {"name": "Surgical extraction", "price": "fra 3 440 kroner"},
-    {"name": "Periodontal treatment (subgingival)", "price": "fra 1 260 kroner"},
-    {"name": "Preventive treatment (hourly)", "price": "fra 1 600 kroner"},
-    {"name": "Bleaching (single jaw)", "price": "2 500 kroner"},
-    {"name": "Bleaching (upper/lower jaw)", "price": "3 500 kroner"},
+    {"name": "Consultation/comprehensive treatment plan", "price": "fra 1 070 kroner"},
+    {"name": "Tooth-colored fillings (various surfaces)", "price": "fra 1 150 kroner"},
+    {"name": "Crowns (metal-ceramic, all-ceramic)", "price": "fra 7 950 kroner"},
+    {"name": "Dental prosthetics (full and partial dentures)", "price": "fra 14 010 kroner"},
+    {"name": "Endodontics (root canal treatment)", "price": "2 600 kroner per time"},
+    {"name": "Tooth extraction (simple/complicated)", "price": "fra 1 350 kroner"},
+    {"name": "Surgical extraction", "price": "fra 3 440 kroner"},
+    {"name": "Periodontal treatment (subgingival)", "price": "fra 1 260 kroner"},
+    {"name": "Preventive treatment (hourly)", "price": "fra 1 600 kroner"},
+    {"name": "Bleaching (single jaw)", "price": "2 500 kroner"},
+    {"name": "Bleaching (upper/lower jaw)", "price": "3 500 kroner"},
     {"name": "X-ray per image", "price": "160 kroner"},
     {"name": "Panoramic x-ray", "price": "820 kroner"},
     {"name": "Local anesthesia", "price": "210 kroner"},
     {"name": "Hygiene supplement", "price": "170 kroner"},
-    {"name": "Core build-up with titanium post", "price": "3 140 kroner"},
+    {"name": "Core build-up with titanium post", "price": "3 140 kroner"},
     {"name": "Surgical draping", "price": "570 kroner"},
     {"name": "Journal printout by mail", "price": "150 kroner"},
 ]
@@ -303,7 +305,8 @@ PRICE_QUESTIONS = [
 ]
 
 def extract_price_values(price_str):
-    m = re.search(r'(\d[\d\s ]*)\s*kroner', price_str.replace('\xa0', ' '))
+    # E.g. "fra 1 400 kroner", "2 600 kroner"
+    m = re.search(r'(\d[\d\s ]*)\s*kroner', price_str.replace('\xa0', ' '))
     if m:
         val = m.group(1)
         val = val.replace(' ', '').replace('\xa0', '')
@@ -335,9 +338,10 @@ def find_service_in_text(user_input):
                 return s
     return None
 
+# --- LLM CALL ---
 async def call_groq_api(user_message: str) -> str:
     try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
+        async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.post(
                 "https://api.groq.com/openai/v1/chat/completions",
                 headers={
@@ -361,13 +365,14 @@ async def call_groq_api(user_message: str) -> str:
         traceback.print_exc()
         return "Sorry, can't answer now."
 
+# --- TTS CALL ---
 async def call_hume_tts(text: str) -> str:
     try:
         audio_dir = "static/audio"
         os.makedirs(audio_dir, exist_ok=True)
         file_name = f"{uuid.uuid4().hex}.mp3"
         file_path = os.path.join(audio_dir, file_name)
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(
                 "https://api.hume.ai/v0/tts/file",
                 headers={
@@ -376,7 +381,7 @@ async def call_hume_tts(text: str) -> str:
                 },
                 json={
                     "utterances": [{"text": text, "description": VOICE_DESCRIPTION}],
-                    "format": {"type": "mp3", "bitrate_kbps": 32},
+                    "format": {"type": "mp3", "bitrate_kbps": 32},  # reduced bitrate for speed
                     "num_generations": 1,
                 },
             )
@@ -401,6 +406,7 @@ async def chat(request: Request):
         awaiting = booking.get("awaiting")
         ai_reply = ""
 
+        # Booking flow (English)
         if awaiting:
             step = awaiting
             value = user_input
@@ -429,6 +435,7 @@ async def chat(request: Request):
                 )
             else:
                 ai_reply = "There was a booking error. Please try again."
+        # Price queries (Norwegian kroner only for prices!)
         elif any(q in user_input.lower() for q in PRICE_QUESTIONS):
             found = find_service_in_text(user_input)
             if found:
@@ -439,10 +446,12 @@ async def chat(request: Request):
                     ai_reply = f"Prices range from {minp} kroner to {maxp} kroner."
                 else:
                     ai_reply = "Please ask for a specific treatment price."
+        # Book appointment
         elif any(word in user_input.lower() for word in ["book", "appointment", "reserve time", "møte", "bestill", "time"]):
             booking.clear()
             booking["awaiting"] = "name"
             ai_reply = "What is your name?"
+        # Service queries
         elif "service" in user_input.lower() or "tjeneste" in user_input.lower():
             s_list = ", ".join(s["name"] for s in SERVICES[:3])
             ai_reply = f"We offer {s_list}, and more."
@@ -452,21 +461,12 @@ async def chat(request: Request):
                 ai_reply = f"{found['name']}: {found['price']}."
             else:
                 ai_reply = "Service not found."
+        # Fallback: call LLM
         else:
-            # Parallelize LLM and TTS calls for performance
-            start_llm = time.perf_counter()
             ai_reply = await call_groq_api(user_input)
-            llm_duration = time.perf_counter() - start_llm
-            print(f"LLM call duration: {llm_duration:.2f}s")
 
         history.append({"user": user_input, "bot": ai_reply})
-
-        # TTS call asynchronously after we got ai_reply
-        start_tts = time.perf_counter()
-        audio_url_task = asyncio.create_task(call_hume_tts(ai_reply))
-        audio_url = await audio_url_task
-        tts_duration = time.perf_counter() - start_tts
-        print(f"TTS call duration: {tts_duration:.2f}s")
+        audio_url = await call_hume_tts(ai_reply)
 
         return JSONResponse(
             {"response": ai_reply, "audio_url": audio_url, "session_id": session_id}
@@ -474,6 +474,7 @@ async def chat(request: Request):
     except Exception as e:
         print("Internal Server Error")
         traceback.print_exc()
+        # Always return JSON error to client
         return JSONResponse({"error": str(e)}, status_code=500)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
