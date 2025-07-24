@@ -487,7 +487,13 @@ def is_valid_email(text):
     return bool(re.fullmatch(r"[^@]+@[^@]+\.[^@]+", text))
 
 def is_valid_date(text):
-    return bool(re.search(r"\d{1,2}[/\-\. ]\d{1,2}", text)) or any(word in text.lower() for word in ["today", "tomorrow", "monday", "tuesday", "wednesday", "thursday", "friday"])
+    # Normalize the text
+    text = text.lower().strip()
+    # Match formats like '25th July', '25 July 2025', 'July 25'
+    return bool(re.search(r"\b(\d{1,2})(st|nd|rd|th)?\s+(january|february|march|april|may|june|july|august|september|october|november|december)(\s+\d{4})?\b", text)) or \
+           bool(re.search(r"\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(st|nd|rd|th)?(\s+\d{4})?\b", text)) or \
+           bool(re.search(r"\d{1,2}[/\-\. ]\d{1,2}[/\-\. ]?(\d{4})?", text)) or \
+           any(word in text for word in ["today", "tomorrow", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"])
 
 def is_valid_time(text):
     return bool(re.search(r"\b\d{1,2}(:\d{2})?\s?(am|pm)?\b", text.lower())) or any(w in text.lower() for w in ["morning", "afternoon", "evening"])
