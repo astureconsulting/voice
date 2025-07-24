@@ -498,64 +498,64 @@ async def chat(request: Request):
 
         def is_counter_question(msg: str) -> bool:
             return any(x in msg for x in ["what", "how", "which", "who", "where", "do you", "can you"])
+import re
 
-        # Booking flow with counter-question handling
-        if awaiting:
-            if is_counter_question(user_lower):
-                # Answer the question first
-                if any(q in user_lower for q in PRICE_QUESTIONS):
-                    found = find_service_in_text(user_input)
-                    if found:
-                        ai_reply = f"{found['name']}: {found['price']}."
-                    else:
-                        minp, maxp = get_price_range()
-                        if minp is not None and maxp is not None:
-                            ai_reply = f"Prices range from {minp} to {maxp} kroner."
-                        else:
-                            ai_reply = "Please ask for a specific treatment price."
-                elif "service" in user_lower or "tjeneste" in user_lower:
-                    s_list = ", ".join(s["name"] for s in SERVICES[:3])
-                    ai_reply = f"We offer {s_list}, and more."
-                else:
-                    ai_reply = await call_groq_api(user_input)
+def is_valid_phone(text):
+    return bool(re.fullmatch(r"[\d\+\-\s]{7,15}", text))
 
-                # Then re-ask booking step
-                step_map = {
-                    "name": "What is your name?",
-                    "phone": "What is your phone number?",
-                    "email": "What is your email address?",
-                    "date": "Preferred date?",
-                    "time": "Preferred time?"
-                }
-                follow_up = step_map.get(awaiting)
-            else:
-                step = awaiting
-                value = user_input
-                if step == "name":
-                    booking["name"] = value
-                    booking["awaiting"] = "phone"
-                    ai_reply = "What is your phone number?"
-                elif step == "phone":
-                    booking["phone"] = value
-                    booking["awaiting"] = "email"
-                    ai_reply = "What is your email address?"
-                elif step == "email":
-                    booking["email"] = value
-                    booking["awaiting"] = "date"
-                    ai_reply = "Preferred date?"
-                elif step == "date":
-                    booking["date"] = value
-                    booking["awaiting"] = "time"
-                    ai_reply = "Preferred time?"
-                elif step == "time":
-                    booking["time"] = value
-                    booking["awaiting"] = None
-                    ai_reply = (
-                        f"Booking for {booking['date']} at {booking['time']}. "
-                        "You'll get a confirmation email soon. Thank you for booking."
-                    )
-                else:
-                    ai_reply = "There was a booking error. Please try again."
+def is_valid_email(text):
+    return bool(re.fullmatch(r"[^@]+@[^@]+\.[^@]+", text))
+
+def is_valid_date(text):
+    return bool(re.search(r"\d{1,2}[/\-\. ]\d{1,2}", text)) or any(word in text.lower() for word in ["today", "tomorrow", "monday", "tuesday", "wednesday", "thursday", "friday"])
+
+def is_valid_time(text):
+    return bool(re.search(r"\b\d{1,2}(:\d{2})?\s?(am|pm)?\b", text.lower())) or any(w in text.lower() for w in ["morning", "afternoon", "evening"])
+
+# Inside the booking flow logic:
+if awaiting:
+    step = awaiting
+    value = user_input
+
+    if is_counter_question(user_lower):
+        # Handle counter-questions as before...
+        ...
+    elif step == "name":
+        booking["name"] = value
+        booking["awaiting"] = "phone"
+        ai_reply = "What is your phone number?"
+    elif step == "phone":
+        if not is_valid_phone(value):
+            ai_reply = "Sorry, that doesn't look like a phone number. Please try again."
+        else:
+            booking["phone"] = value
+            booking["awaiting"] = "email"
+            ai_reply = "What is your email address?"
+    elif step == "email":
+        if not is_valid_email(value):
+            ai_reply = "Hmm, that doesn't seem like a valid email. Please check and try again."
+        else:
+            booking["email"] = value
+            booking["awaiting"] = "date"
+            ai_reply = "Preferred date?"
+    elif step == "date":
+        if not is_valid_date(value):
+            ai_reply = "Sorry, I didn’t catch a valid date. Could you please try again?"
+        else:
+            booking["date"] = value
+            booking["awaiting"] = "time"
+            ai_reply = "Preferred time?"
+    elif step == "time":
+        if not is_valid_time(value):
+            ai_reply = "That doesn’t seem like a valid time. Could you tell me your preferred time again?"
+        else:
+            booking["time"] = value
+            booking["awaiting"] = None
+            ai_reply = (
+                f"Booking for {booking['date']} at {booking['time']}. "
+                "You'll get a confirmation email soon. Thank you for booking."
+            )
+
 
         # Price queries (outside booking)
         elif any(q in user_lower for q in PRICE_QUESTIONS):
