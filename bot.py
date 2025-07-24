@@ -405,76 +405,121 @@ async def chat(request: Request):
         booking = session.setdefault("booking", {})
         awaiting = booking.get("awaiting")
         ai_reply = ""
+        follow_up = None
 
-        # Booking flow (English)
+        user_lower = user_input.lower()
+
+        def is_counter_question(msg: str) -> bool:
+            return any(x in msg for x in ["what", "how", "which", "who", "where", "do you", "can you"])
+
+        # Booking flow with counter-question handling
         if awaiting:
-            step = awaiting
-            value = user_input
-            if step == "name":
-                booking["name"] = value
-                booking["awaiting"] = "phone"
-                ai_reply = "What is your phone number?"
-            elif step == "phone":
-                booking["phone"] = value
-                booking["awaiting"] = "email"
-                ai_reply = "What is your email address?"
-            elif step == "email":
-                booking["email"] = value
-                booking["awaiting"] = "date"
-                ai_reply = "Preferred date?"
-            elif step == "date":
-                booking["date"] = value
-                booking["awaiting"] = "time"
-                ai_reply = "Preferred time?"
-            elif step == "time":
-                booking["time"] = value
-                booking["awaiting"] = None
-                ai_reply = (
-                    f"Booking for {booking['date']} at {booking['time']}. "
-                    "You'll get a confirmation email soon. Thank you for booking."
-                )
+            if is_counter_question(user_lower):
+                # Answer the question first
+                if any(q in user_lower for q in PRICE_QUESTIONS):
+                    found = find_service_in_text(user_input)
+                    if found:
+                        ai_reply = f"{found['name']}: {found['price']}."
+                    else:
+                        minp, maxp = get_price_range()
+                        if minp is not None and maxp is not None:
+                            ai_reply = f"Prices range from {minp} to {maxp} kroner."
+                        else:
+                            ai_reply = "Please ask for a specific treatment price."
+                elif "service" in user_lower or "tjeneste" in user_lower:
+                    s_list = ", ".join(s["name"] for s in SERVICES[:3])
+                    ai_reply = f"We offer {s_list}, and more."
+                else:
+                    ai_reply = await call_groq_api(user_input)
+
+                # Then re-ask booking step
+                step_map = {
+                    "name": "What is your name?",
+                    "phone": "What is your phone number?",
+                    "email": "What is your email address?",
+                    "date": "Preferred date?",
+                    "time": "Preferred time?"
+                }
+                follow_up = step_map.get(awaiting)
             else:
-                ai_reply = "There was a booking error. Please try again."
-        # Price queries (Norwegian kroner only for prices!)
-        elif any(q in user_input.lower() for q in PRICE_QUESTIONS):
+                step = awaiting
+                value = user_input
+                if step == "name":
+                    booking["name"] = value
+                    booking["awaiting"] = "phone"
+                    ai_reply = "What is your phone number?"
+                elif step == "phone":
+                    booking["phone"] = value
+                    booking["awaiting"] = "email"
+                    ai_reply = "What is your email address?"
+                elif step == "email":
+                    booking["email"] = value
+                    booking["awaiting"] = "date"
+                    ai_reply = "Preferred date?"
+                elif step == "date":
+                    booking["date"] = value
+                    booking["awaiting"] = "time"
+                    ai_reply = "Preferred time?"
+                elif step == "time":
+                    booking["time"] = value
+                    booking["awaiting"] = None
+                    ai_reply = (
+                        f"Booking for {booking['date']} at {booking['time']}. "
+                        "You'll get a confirmation email soon. Thank you for booking."
+                    )
+                else:
+                    ai_reply = "There was a booking error. Please try again."
+
+        # Price queries (outside booking)
+        elif any(q in user_lower for q in PRICE_QUESTIONS):
             found = find_service_in_text(user_input)
             if found:
                 ai_reply = f"{found['name']}: {found['price']}."
             else:
                 minp, maxp = get_price_range()
                 if minp is not None and maxp is not None:
-                    ai_reply = f"Prices range from {minp} kroner to {maxp} kroner."
+                    ai_reply = f"Prices range from {minp} to {maxp} kroner."
                 else:
                     ai_reply = "Please ask for a specific treatment price."
-        # Book appointment
-        elif any(word in user_input.lower() for word in ["book", "appointment", "reserve time", "møte", "bestill", "time"]):
+
+        # Booking initiation
+        elif any(word in user_lower for word in ["book", "appointment", "reserve time", "møte", "bestill", "time"]):
             booking.clear()
             booking["awaiting"] = "name"
             ai_reply = "What is your name?"
-        # Service queries
-        elif "service" in user_input.lower() or "tjeneste" in user_input.lower():
+
+        # Services info
+        elif "service" in user_lower or "tjeneste" in user_lower:
             s_list = ", ".join(s["name"] for s in SERVICES[:3])
             ai_reply = f"We offer {s_list}, and more."
-        elif any(name in user_input.lower() for name in SERVICE_NAMES):
-            found = next((s for s in SERVICES if s["name"].lower() in user_input.lower()), None)
+        elif any(name in user_lower for name in SERVICE_NAMES):
+            found = next((s for s in SERVICES if s["name"].lower() in user_lower), None)
             if found:
                 ai_reply = f"{found['name']}: {found['price']}."
             else:
                 ai_reply = "Service not found."
-        # Fallback: call LLM
+
+        # General fallback to LLM
         else:
             ai_reply = await call_groq_api(user_input)
 
-        history.append({"user": user_input, "bot": ai_reply})
-        audio_url = await call_hume_tts(ai_reply)
+        # Combine response and follow-up booking prompt
+        final_response = ai_reply
+        if follow_up:
+            final_response += f" {follow_up}"
+
+        # Add slight buffer before TTS to avoid first-word cut-off
+        tts_input = f" . {final_response}"
+
+        history.append({"user": user_input, "bot": final_response})
+        audio_url = await call_hume_tts(tts_input)
 
         return JSONResponse(
-            {"response": ai_reply, "audio_url": audio_url, "session_id": session_id}
+            {"response": final_response, "audio_url": audio_url, "session_id": session_id}
         )
     except Exception as e:
         print("Internal Server Error")
         traceback.print_exc()
-        # Always return JSON error to client
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
