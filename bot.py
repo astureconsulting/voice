@@ -480,6 +480,17 @@ async def call_hume_tts(text: str) -> str:
         print("Hume API Error:", str(e))
         traceback.print_exc()
         return ""
+def is_valid_phone(text):
+    return bool(re.fullmatch(r"[\d\+\-\s]{7,15}", text))
+
+def is_valid_email(text):
+    return bool(re.fullmatch(r"[^@]+@[^@]+\.[^@]+", text))
+
+def is_valid_date(text):
+    return bool(re.search(r"\d{1,2}[/\-\. ]\d{1,2}", text)) or any(word in text.lower() for word in ["today", "tomorrow", "monday", "tuesday", "wednesday", "thursday", "friday"])
+
+def is_valid_time(text):
+    return bool(re.search(r"\b\d{1,2}(:\d{2})?\s?(am|pm)?\b", text.lower())) or any(w in text.lower() for w in ["morning", "afternoon", "evening"])
 
 @app.post("/api/chat")
 async def chat(request: Request):
@@ -500,17 +511,6 @@ async def chat(request: Request):
             return any(x in msg for x in ["what", "how", "which", "who", "where", "do you", "can you"])
 
 
-def is_valid_phone(text):
-    return bool(re.fullmatch(r"[\d\+\-\s]{7,15}", text))
-
-def is_valid_email(text):
-    return bool(re.fullmatch(r"[^@]+@[^@]+\.[^@]+", text))
-
-def is_valid_date(text):
-    return bool(re.search(r"\d{1,2}[/\-\. ]\d{1,2}", text)) or any(word in text.lower() for word in ["today", "tomorrow", "monday", "tuesday", "wednesday", "thursday", "friday"])
-
-def is_valid_time(text):
-    return bool(re.search(r"\b\d{1,2}(:\d{2})?\s?(am|pm)?\b", text.lower())) or any(w in text.lower() for w in ["morning", "afternoon", "evening"])
 
 # Inside the booking flow logic:
 if awaiting:
