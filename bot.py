@@ -491,7 +491,6 @@ def is_valid_date(text):
 
 def is_valid_time(text):
     return bool(re.search(r"\b\d{1,2}(:\d{2})?\s?(am|pm)?\b", text.lower())) or any(w in text.lower() for w in ["morning", "afternoon", "evening"])
-
 @app.post("/api/chat")
 async def chat(request: Request):
     try:
@@ -508,56 +507,83 @@ async def chat(request: Request):
         user_lower = user_input.lower()
 
         def is_counter_question(msg: str) -> bool:
-            return any(x in msg for x in ["what", "how", "which", "who", "where", "do you", "can you"])
+            return any(x in msg for x in ["what", "how", "which", "who", "where", "do you", "can you", "tell me", "list", "are there", "available"])
 
+        # Booking flow
+        if awaiting:
+            if is_counter_question(user_lower):
+                # Handle question during booking
+                if any(q in user_lower for q in PRICE_QUESTIONS):
+                    found = find_service_in_text(user_input)
+                    if found:
+                        ai_reply = f"{found['name']}: {found['price']}."
+                    else:
+                        minp, maxp = get_price_range()
+                        if minp is not None and maxp is not None:
+                            ai_reply = f"Prices range from {minp} to {maxp} kroner."
+                        else:
+                            ai_reply = "Please ask for a specific treatment price."
+                elif "service" in user_lower or "tjeneste" in user_lower:
+                    s_list = ", ".join(s["name"] for s in SERVICES[:3])
+                    ai_reply = f"We offer {s_list}, and more."
+                else:
+                    ai_reply = await call_groq_api(user_input)
 
+                # Resume booking prompt
+                step_map = {
+                    "name": "What is your name?",
+                    "phone": "What is your phone number?",
+                    "email": "What is your email address?",
+                    "date": "Preferred date?",
+                    "time": "Preferred time?"
+                }
+                follow_up = step_map.get(awaiting)
 
-# Inside the booking flow logic:
-if awaiting:
-    step = awaiting
-    value = user_input
+            else:
+                step = awaiting
+                value = user_input
 
-    if is_counter_question(user_lower):
-        # Handle counter-questions as before...
-        ...
-    elif step == "name":
-        booking["name"] = value
-        booking["awaiting"] = "phone"
-        ai_reply = "What is your phone number?"
-    elif step == "phone":
-        if not is_valid_phone(value):
-            ai_reply = "Sorry, that doesn't look like a phone number. Please try again."
-        else:
-            booking["phone"] = value
-            booking["awaiting"] = "email"
-            ai_reply = "What is your email address?"
-    elif step == "email":
-        if not is_valid_email(value):
-            ai_reply = "Hmm, that doesn't seem like a valid email. Please check and try again."
-        else:
-            booking["email"] = value
-            booking["awaiting"] = "date"
-            ai_reply = "Preferred date?"
-    elif step == "date":
-        if not is_valid_date(value):
-            ai_reply = "Sorry, I didn’t catch a valid date. Could you please try again?"
-        else:
-            booking["date"] = value
-            booking["awaiting"] = "time"
-            ai_reply = "Preferred time?"
-    elif step == "time":
-        if not is_valid_time(value):
-            ai_reply = "That doesn’t seem like a valid time. Could you tell me your preferred time again?"
-        else:
-            booking["time"] = value
-            booking["awaiting"] = None
-            ai_reply = (
-                f"Booking for {booking['date']} at {booking['time']}. "
-                "You'll get a confirmation email soon. Thank you for booking."
-            )
+                if step == "name":
+                    booking["name"] = value
+                    booking["awaiting"] = "phone"
+                    ai_reply = "What is your phone number?"
 
+                elif step == "phone":
+                    if not is_valid_phone(value):
+                        ai_reply = "Sorry, that doesn't look like a phone number. Please try again."
+                    else:
+                        booking["phone"] = value
+                        booking["awaiting"] = "email"
+                        ai_reply = "What is your email address?"
 
-        # Price queries (outside booking)
+                elif step == "email":
+                    if not is_valid_email(value):
+                        ai_reply = "Hmm, that doesn't seem like a valid email. Please check and try again."
+                    else:
+                        booking["email"] = value
+                        booking["awaiting"] = "date"
+                        ai_reply = "Preferred date?"
+
+                elif step == "date":
+                    if not is_valid_date(value):
+                        ai_reply = "Sorry, I didn’t catch a valid date. Could you please try again?"
+                    else:
+                        booking["date"] = value
+                        booking["awaiting"] = "time"
+                        ai_reply = "Preferred time?"
+
+                elif step == "time":
+                    if not is_valid_time(value):
+                        ai_reply = "That doesn’t seem like a valid time. Could you tell me your preferred time again?"
+                    else:
+                        booking["time"] = value
+                        booking["awaiting"] = None
+                        ai_reply = (
+                            f"Booking for {booking['date']} at {booking['time']}. "
+                            "You'll get a confirmation email soon. Thank you for booking."
+                        )
+
+        # Outside booking: check prices
         elif any(q in user_lower for q in PRICE_QUESTIONS):
             found = find_service_in_text(user_input)
             if found:
@@ -569,13 +595,13 @@ if awaiting:
                 else:
                     ai_reply = "Please ask for a specific treatment price."
 
-        # Booking initiation
+        # Start booking
         elif any(word in user_lower for word in ["book", "appointment", "reserve time", "møte", "bestill", "time"]):
             booking.clear()
             booking["awaiting"] = "name"
             ai_reply = "What is your name?"
 
-        # Services info
+        # Services
         elif "service" in user_lower or "tjeneste" in user_lower:
             s_list = ", ".join(s["name"] for s in SERVICES[:3])
             ai_reply = f"We offer {s_list}, and more."
@@ -586,18 +612,17 @@ if awaiting:
             else:
                 ai_reply = "Service not found."
 
-        # General fallback to LLM
+        # Fallback to LLM
         else:
             ai_reply = await call_groq_api(user_input)
 
-        # Combine response and follow-up booking prompt
+        # Final response composition
         final_response = ai_reply
         if follow_up:
             final_response += f" {follow_up}"
 
-        # Add slight buffer before TTS to avoid first-word cut-off
-        tts_input = f"\u200B{final_response}"  # \u200B = zero-width space
-
+        # Add TTS buffer
+        tts_input = f"\u200B{final_response}"  # Zero-width space to avoid word-cut
 
         history.append({"user": user_input, "bot": final_response})
         audio_url = await call_hume_tts(tts_input)
@@ -605,6 +630,7 @@ if awaiting:
         return JSONResponse(
             {"response": final_response, "audio_url": audio_url, "session_id": session_id}
         )
+
     except Exception as e:
         print("Internal Server Error")
         traceback.print_exc()
