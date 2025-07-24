@@ -513,7 +513,18 @@ async def chat(request: Request):
         user_lower = user_input.lower()
 
         def is_counter_question(msg: str) -> bool:
-            return any(x in msg for x in ["what", "how", "which", "who", "where", "do you", "can you", "tell me", "list", "are there", "available"])
+            return any(x in msg for x in [    "what", "how", "which", "who", "where", "when", "why",
+    "do you", "can you", "could you", "would you", "will you",
+    "tell me", "show me", "list", "are there", "give", "explain",
+    "available", "is it", "are you", "should i", "do i need",
+    "i want to know", "can i", "do we", "does it", "how much",
+    "how many", "what are", "what is", "who is", "can", "could",
+    "may i", "should we", "do you have", "how long", "tell us",
+    "what do", "does your", "do your", "are your", "who are",
+    "provide", "share", "details", "info", "information", "help",
+    "support", "contact", "about", "explain", "describe", "anyone",
+    "doctors", "services", "treatments", "fees", "price", "cost"
+])
 
         # Booking flow
         if awaiting:
