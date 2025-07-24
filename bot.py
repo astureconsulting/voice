@@ -498,7 +498,7 @@ async def chat(request: Request):
 
         def is_counter_question(msg: str) -> bool:
             return any(x in msg for x in ["what", "how", "which", "who", "where", "do you", "can you"])
-import re
+
 
 def is_valid_phone(text):
     return bool(re.fullmatch(r"[\d\+\-\s]{7,15}", text))
