@@ -304,75 +304,211 @@ PRICE_QUESTIONS = [
     "price", "prices", "cost", "costs", "fee", "fees", "rate", "rates", "charge", "charges", "treatment cost", "pricelist"
 ]
 
-def extract_price_values(price_str):
-    # E.g. "fra 1 400 kroner", "2 600 kroner"
-    m = re.search(r'(\d[\d\s ]*)\s*kroner', price_str.replace('\xa0', ' '))
-    if m:
-        val = m.group(1)
-        val = val.replace(' ', '').replace('\xa0', '')
-        try:
-            return int(val)
-        except Exception:
-            return None
-    return None
+# def extract_price_values(price_str):
+#     # E.g. "fra 1 400 kroner", "2 600 kroner"
+#     m = re.search(r'(\d[\d\s ]*)\s*kroner', price_str.replace('\xa0', ' '))
+#     if m:
+#         val = m.group(1)
+#         val = val.replace(' ', '').replace('\xa0', '')
+#         try:
+#             return int(val)
+#         except Exception:
+#             return None
+#     return None
 
-def get_price_range():
-    prices = []
-    for s in SERVICES:
-        p = extract_price_values(s["price"])
-        if p is not None:
-            prices.append(p)
-    if not prices:
-        return None, None
-    return min(prices), max(prices)
+# def get_price_range():
+#     prices = []
+#     for s in SERVICES:
+#         p = extract_price_values(s["price"])
+#         if p is not None:
+#             prices.append(p)
+#     if not prices:
+#         return None, None
+#     return min(prices), max(prices)
 
-def find_service_in_text(user_input):
-    input_lower = user_input.lower()
-    for s in SERVICES:
-        base_name = s["name"].split("(")[0].strip().lower()
-        if base_name in input_lower:
-            return s
-        words = base_name.replace('-', ' ').replace(',', '').split()
-        for w in words:
-            if w in input_lower and len(w) > 3:
-                return s
-    return None
+# def find_service_in_text(user_input):
+#     input_lower = user_input.lower()
+#     for s in SERVICES:
+#         base_name = s["name"].split("(")[0].strip().lower()
+#         if base_name in input_lower:
+#             return s
+#         words = base_name.replace('-', ' ').replace(',', '').split()
+#         for w in words:
+#             if w in input_lower and len(w) > 3:
+#                 return s
+#     return None
 
-# --- LLM CALL ---
-async def call_groq_api(user_message: str) -> str:
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {GROQ_API_KEY}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": LLAMA3_MODEL,
-                    "messages": [
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": f"{user_message}\nReply in 80 characters or less. No lists or formatting."},
-                    ],
-                    "temperature": 0.3,
-                    "max_tokens": 180,
-                },
-            )
-            response.raise_for_status()
-            return response.json()["choices"][0]["message"]["content"].strip()
-    except Exception as e:
-        print("Groq API Error:", str(e))
-        traceback.print_exc()
-        return "Sorry, can't answer now."
+# # --- LLM CALL ---
+# async def call_groq_api(user_message: str) -> str:
+#     try:
+#         async with httpx.AsyncClient(timeout=5.0) as client:
+#             response = await client.post(
+#                 "https://api.groq.com/openai/v1/chat/completions",
+#                 headers={
+#                     "Authorization": f"Bearer {GROQ_API_KEY}",
+#                     "Content-Type": "application/json",
+#                 },
+#                 json={
+#                     "model": LLAMA3_MODEL,
+#                     "messages": [
+#                         {"role": "system", "content": SYSTEM_PROMPT},
+#                         {"role": "user", "content": f"{user_message}\nReply in 80 characters or less. No lists or formatting."},
+#                     ],
+#                     "temperature": 0.3,
+#                     "max_tokens": 180,
+#                 },
+#             )
+#             response.raise_for_status()
+#             return response.json()["choices"][0]["message"]["content"].strip()
+#     except Exception as e:
+#         print("Groq API Error:", str(e))
+#         traceback.print_exc()
+#         return "Sorry, can't answer now."
 
-# --- TTS CALL ---
+# # --- TTS CALL ---
+# async def call_hume_tts(text: str) -> str:
+#     try:
+#         audio_dir = "static/audio"
+#         os.makedirs(audio_dir, exist_ok=True)
+#         file_name = f"{uuid.uuid4().hex}.mp3"
+#         file_path = os.path.join(audio_dir, file_name)
+#         async with httpx.AsyncClient(timeout=10.0) as client:
+#             response = await client.post(
+#                 "https://api.hume.ai/v0/tts/file",
+#                 headers={
+#                     "X-Hume-Api-Key": HUME_API_KEY,
+#                     "Content-Type": "application/json",
+#                 },
+#                 json={
+#                     "utterances": [{"text": text, "description": VOICE_DESCRIPTION}],
+#                     "format": {"type": "mp3", "bitrate_kbps": 32},  # reduced bitrate for speed
+#                     "num_generations": 1,
+#                 },
+#             )
+#             response.raise_for_status()
+#             with open(file_path, "wb") as f:
+#                 f.write(response.content)
+#             return f"/static/audio/{file_name}"
+#     except Exception as e:
+#         print("Hume API Error:", str(e))
+#         traceback.print_exc()
+#         return ""
+
+# @app.post("/api/chat")
+# async def chat(request: Request):
+#     try:
+#         data = await request.json()
+#         user_input = data.get("message", "").strip()
+#         session_id = data.get("session_id") or str(uuid.uuid4())
+#         session = sessions[session_id]
+#         history = session.setdefault("history", [])
+#         booking = session.setdefault("booking", {})
+#         awaiting = booking.get("awaiting")
+#         ai_reply = ""
+
+#         # Booking flow (English)
+#         if awaiting:
+#             step = awaiting
+#             value = user_input
+#             if step == "name":
+#                 booking["name"] = value
+#                 booking["awaiting"] = "phone"
+#                 ai_reply = "What is your phone number?"
+#             elif step == "phone":
+#                 booking["phone"] = value
+#                 booking["awaiting"] = "email"
+#                 ai_reply = "What is your email address?"
+#             elif step == "email":
+#                 booking["email"] = value
+#                 booking["awaiting"] = "date"
+#                 ai_reply = "Preferred date?"
+#             elif step == "date":
+#                 booking["date"] = value
+#                 booking["awaiting"] = "time"
+#                 ai_reply = "Preferred time?"
+#             elif step == "time":
+#                 booking["time"] = value
+#                 booking["awaiting"] = None
+#                 ai_reply = (
+#                     f"Booking for {booking['date']} at {booking['time']}. "
+#                     "You'll get a confirmation email soon. Thank you for booking."
+#                 )
+#             else:
+#                 ai_reply = "There was a booking error. Please try again."
+#         # Price queries (Norwegian kroner only for prices!)
+#         elif any(q in user_input.lower() for q in PRICE_QUESTIONS):
+#             found = find_service_in_text(user_input)
+#             if found:
+#                 ai_reply = f"{found['name']}: {found['price']}."
+#             else:
+#                 minp, maxp = get_price_range()
+#                 if minp is not None and maxp is not None:
+#                     ai_reply = f"Prices range from {minp} kroner to {maxp} kroner."
+#                 else:
+#                     ai_reply = "Please ask for a specific treatment price."
+#         # Book appointment
+#         elif any(word in user_input.lower() for word in ["book", "appointment", "reserve time", "møte", "bestill", "time"]):
+#             booking.clear()
+#             booking["awaiting"] = "name"
+#             ai_reply = "What is your name?"
+#         # Service queries
+#         elif "service" in user_input.lower() or "tjeneste" in user_input.lower():
+#             s_list = ", ".join(s["name"] for s in SERVICES[:3])
+#             ai_reply = f"We offer {s_list}, and more."
+#         elif any(name in user_input.lower() for name in SERVICE_NAMES):
+#             found = next((s for s in SERVICES if s["name"].lower() in user_input.lower()), None)
+#             if found:
+#                 ai_reply = f"{found['name']}: {found['price']}."
+#             else:
+#                 ai_reply = "Service not found."
+#         # Fallback: call LLM
+#         else:
+#             ai_reply = await call_groq_api(user_input)
+
+#         history.append({"user": user_input, "bot": ai_reply})
+#         audio_url = await call_hume_tts(ai_reply)
+
+#         return JSONResponse(
+#             {"response": ai_reply, "audio_url": audio_url, "session_id": session_id}
+#         )
+#     except Exception as e:
+#         print("Internal Server Error")
+#         traceback.print_exc()
+#         # Always return JSON error to client
+#         return JSONResponse({"error": str(e)}, status_code=500)
+
+QUESTION_WORDS = {"what", "when", "where", "who", "why", "how", "which", "does", "do", "is", "are", "can"}
+
+def is_question(text: str) -> bool:
+    lower = text.lower()
+    if lower.strip().endswith("?"):
+        return True
+    first_word = lower.strip().split()[0] if lower.strip() else ""
+    if first_word in QUESTION_WORDS:
+        return True
+    return False
+
+def is_valid_date(date_str: str) -> bool:
+    # Accepts formats like "July 24 2025", "Jul 24 2025"
+    pattern = r'^(January|February|March|April|May|June|July|August|September|October|November|December|' \
+              r'Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}\s+\d{4}$'
+    return re.match(pattern, date_str.strip(), re.IGNORECASE) is not None
+
+def is_valid_time(time_str: str) -> bool:
+    # Accepts times like "2:30 pm", "11:00 AM", "9 am"
+    pattern = r'^(1[0-2]|0?[1-9]):?([0-5][0-9])?\s*(AM|PM|am|pm)$'
+    return re.match(pattern, time_str.strip()) is not None
+
+# Updated TTS call with silence prefix to avoid cutting first word
 async def call_hume_tts(text: str) -> str:
     try:
+        # Add 250 ms silence prefix to prevent cutting first word in audio
+        text = "<silence msec=250/> " + text
         audio_dir = "static/audio"
         os.makedirs(audio_dir, exist_ok=True)
         file_name = f"{uuid.uuid4().hex}.mp3"
         file_path = os.path.join(audio_dir, file_name)
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.post(
                 "https://api.hume.ai/v0/tts/file",
                 headers={
@@ -381,7 +517,7 @@ async def call_hume_tts(text: str) -> str:
                 },
                 json={
                     "utterances": [{"text": text, "description": VOICE_DESCRIPTION}],
-                    "format": {"type": "mp3", "bitrate_kbps": 32},  # reduced bitrate for speed
+                    "format": {"type": "mp3", "bitrate_kbps": 32},
                     "num_generations": 1,
                 },
             )
@@ -406,36 +542,56 @@ async def chat(request: Request):
         awaiting = booking.get("awaiting")
         ai_reply = ""
 
-        # Booking flow (English)
+        # Booking flow with question detection and input validation
         if awaiting:
-            step = awaiting
-            value = user_input
-            if step == "name":
-                booking["name"] = value
-                booking["awaiting"] = "phone"
-                ai_reply = "What is your phone number?"
-            elif step == "phone":
-                booking["phone"] = value
-                booking["awaiting"] = "email"
-                ai_reply = "What is your email address?"
-            elif step == "email":
-                booking["email"] = value
-                booking["awaiting"] = "date"
-                ai_reply = "Preferred date?"
-            elif step == "date":
-                booking["date"] = value
-                booking["awaiting"] = "time"
-                ai_reply = "Preferred time?"
-            elif step == "time":
-                booking["time"] = value
-                booking["awaiting"] = None
-                ai_reply = (
-                    f"Booking for {booking['date']} at {booking['time']}. "
-                    "You'll get a confirmation email soon. Thank you for booking."
-                )
+            # If input looks like a question, answer it first then re-ask booking question
+            if is_question(user_input):
+                answer = await call_groq_api(user_input)
+                booking_question_map = {
+                    "name": "What is your name?",
+                    "phone": "What is your phone number?",
+                    "email": "What is your email address?",
+                    "date": "Preferred date? (e.g., July 24 2025)",
+                    "time": "Preferred time? (e.g., 2:30 pm)",
+                }
+                booking_q = booking_question_map.get(awaiting, "Please provide the required info.")
+                ai_reply = f"{answer} Also, {booking_q}"
             else:
-                ai_reply = "There was a booking error. Please try again."
-        # Price queries (Norwegian kroner only for prices!)
+                step = awaiting
+                value = user_input
+
+                if step == "name":
+                    booking["name"] = value
+                    booking["awaiting"] = "phone"
+                    ai_reply = "What is your phone number?"
+                elif step == "phone":
+                    booking["phone"] = value
+                    booking["awaiting"] = "email"
+                    ai_reply = "What is your email address?"
+                elif step == "email":
+                    booking["email"] = value
+                    booking["awaiting"] = "date"
+                    ai_reply = "Preferred date? (e.g., July 24 2025)"
+                elif step == "date":
+                    if not is_valid_date(value):
+                        ai_reply = "Please provide the date in the format like 'July 24 2025'."
+                    else:
+                        booking["date"] = value
+                        booking["awaiting"] = "time"
+                        ai_reply = "Preferred time? (e.g., 2:30 pm)"
+                elif step == "time":
+                    if not is_valid_time(value):
+                        ai_reply = "Please provide the time like '2:30 pm' or '11 am'."
+                    else:
+                        booking["time"] = value
+                        booking["awaiting"] = None
+                        ai_reply = (
+                            f"Booking for {booking['date']} at {booking['time']}. "
+                            "You'll get a confirmation email soon. Thank you for booking."
+                        )
+                else:
+                    ai_reply = "There was a booking error. Please try again."
+
         elif any(q in user_input.lower() for q in PRICE_QUESTIONS):
             found = find_service_in_text(user_input)
             if found:
@@ -446,12 +602,12 @@ async def chat(request: Request):
                     ai_reply = f"Prices range from {minp} kroner to {maxp} kroner."
                 else:
                     ai_reply = "Please ask for a specific treatment price."
-        # Book appointment
+
         elif any(word in user_input.lower() for word in ["book", "appointment", "reserve time", "møte", "bestill", "time"]):
             booking.clear()
             booking["awaiting"] = "name"
             ai_reply = "What is your name?"
-        # Service queries
+
         elif "service" in user_input.lower() or "tjeneste" in user_input.lower():
             s_list = ", ".join(s["name"] for s in SERVICES[:3])
             ai_reply = f"We offer {s_list}, and more."
@@ -461,8 +617,8 @@ async def chat(request: Request):
                 ai_reply = f"{found['name']}: {found['price']}."
             else:
                 ai_reply = "Service not found."
-        # Fallback: call LLM
         else:
+            # Fallback to LLM for other queries
             ai_reply = await call_groq_api(user_input)
 
         history.append({"user": user_input, "bot": ai_reply})
@@ -474,7 +630,6 @@ async def chat(request: Request):
     except Exception as e:
         print("Internal Server Error")
         traceback.print_exc()
-        # Always return JSON error to client
         return JSONResponse({"error": str(e)}, status_code=500)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
