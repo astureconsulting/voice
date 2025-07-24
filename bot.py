@@ -596,7 +596,8 @@ async def chat(request: Request):
             final_response += f" {follow_up}"
 
         # Add slight buffer before TTS to avoid first-word cut-off
-        tts_input = f" . {final_response}"
+        tts_input = f"\u200B{final_response}"  # \u200B = zero-width space
+
 
         history.append({"user": user_input, "bot": final_response})
         audio_url = await call_hume_tts(tts_input)
