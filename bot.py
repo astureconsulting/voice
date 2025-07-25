@@ -330,31 +330,41 @@ app.add_middleware(
 )
 
 # Prices in Norwegian krone for TTS quality
+# SERVICES = [
+#     {"name": "Annual dental check-up (examination, x-rays, cleaning, hygiene)", "price": "fra 1 400 kroner"},
+#     {"name": "Cleaning, polishing, and hygiene", "price": "fra 950 kroner"},
+#     {"name": "Specialist examination/diagnostics", "price": "fra 1 290 kroner"},
+#     {"name": "Acute/general dentist examination", "price": "770 kroner"},
+#     {"name": "Consultation/comprehensive treatment plan", "price": "fra 1 070 kroner"},
+#     {"name": "Tooth-colored fillings (various surfaces)", "price": "fra 1 150 kroner"},
+#     {"name": "Crowns (metal-ceramic, all-ceramic)", "price": "fra 7 950 kroner"},
+#     {"name": "Dental prosthetics (full and partial dentures)", "price": "fra 14 010 kroner"},
+#     {"name": "Endodontics (root canal treatment)", "price": "2 600 kroner per time"},
+#     {"name": "Tooth extraction (simple/complicated)", "price": "fra 1 350 kroner"},
+#     {"name": "Surgical extraction", "price": "fra 3 440 kroner"},
+#     {"name": "Periodontal treatment (subgingival)", "price": "fra 1 260 kroner"},
+#     {"name": "Preventive treatment (hourly)", "price": "fra 1 600 kroner"},
+#     {"name": "Bleaching (single jaw)", "price": "2 500 kroner"},
+#     {"name": "Bleaching (upper/lower jaw)", "price": "3 500 kroner"},
+#     {"name": "X-ray per image", "price": "160 kroner"},
+#     {"name": "Panoramic x-ray", "price": "820 kroner"},
+#     {"name": "Local anesthesia", "price": "210 kroner"},
+#     {"name": "Hygiene supplement", "price": "170 kroner"},
+#     {"name": "Core build-up with titanium post", "price": "3 140 kroner"},
+#     {"name": "Surgical draping", "price": "570 kroner"},
+#     {"name": "Journal printout by mail", "price": "150 kroner"},
+# ]
 SERVICES = [
-    {"name": "Annual dental check-up (examination, x-rays, cleaning, hygiene)", "price": "fra 1 400 kroner"},
-    {"name": "Cleaning, polishing, and hygiene", "price": "fra 950 kroner"},
-    {"name": "Specialist examination/diagnostics", "price": "fra 1 290 kroner"},
-    {"name": "Acute/general dentist examination", "price": "770 kroner"},
-    {"name": "Consultation/comprehensive treatment plan", "price": "fra 1 070 kroner"},
-    {"name": "Tooth-colored fillings (various surfaces)", "price": "fra 1 150 kroner"},
-    {"name": "Crowns (metal-ceramic, all-ceramic)", "price": "fra 7 950 kroner"},
-    {"name": "Dental prosthetics (full and partial dentures)", "price": "fra 14 010 kroner"},
-    {"name": "Endodontics (root canal treatment)", "price": "2 600 kroner per time"},
-    {"name": "Tooth extraction (simple/complicated)", "price": "fra 1 350 kroner"},
-    {"name": "Surgical extraction", "price": "fra 3 440 kroner"},
-    {"name": "Periodontal treatment (subgingival)", "price": "fra 1 260 kroner"},
-    {"name": "Preventive treatment (hourly)", "price": "fra 1 600 kroner"},
-    {"name": "Bleaching (single jaw)", "price": "2 500 kroner"},
-    {"name": "Bleaching (upper/lower jaw)", "price": "3 500 kroner"},
-    {"name": "X-ray per image", "price": "160 kroner"},
-    {"name": "Panoramic x-ray", "price": "820 kroner"},
-    {"name": "Local anesthesia", "price": "210 kroner"},
-    {"name": "Hygiene supplement", "price": "170 kroner"},
-    {"name": "Core build-up with titanium post", "price": "3 140 kroner"},
-    {"name": "Surgical draping", "price": "570 kroner"},
-    {"name": "Journal printout by mail", "price": "150 kroner"},
+    {"name": "Personalized nutrition programs for weight loss", "price": "Starting from £75 per session"},
+    {"name": "Hormone balance nutrition support (PCOS and menopause)", "price": "Starting from £75 per session"},
+    {"name": "Bridal nutrition and weight loss", "price": "Starting from £75 per session"},
+    {"name": "Group diet programmes", "price": "Pricing available on inquiry"},
+    {"name": "Nutrition for glowing skin", "price": "Starting from £75 per session"},
+    {"name": "Mental clarity and focus support", "price": "Starting from £75 per session"},
+    {"name": "Energy boosting nutrition plans", "price": "Starting from £75 per session"},
+    {"name": "Virtual nutrition consultations", "price": "Starting from £75 per session"},
+    {"name": "Ongoing wellness coaching", "price": "Packages and discounts available"},
 ]
-
 SERVICE_NAMES = [s["name"].lower() for s in SERVICES]
 sessions = defaultdict(dict)  # session_id -> {'history': [...], 'booking': {...}}
 
@@ -468,6 +478,162 @@ def is_valid_date(text):
 
 def is_valid_time(text):
     return bool(re.search(r"\b\d{1,2}(:\d{2})?\s?(am|pm)?\b", text.lower())) or any(w in text.lower() for w in ["morning", "afternoon", "evening"])
+# @app.post("/api/chat")
+# async def chat(request: Request):
+#     try:
+#         data = await request.json()
+#         user_input = data.get("message", "").strip()
+#         session_id = data.get("session_id") or str(uuid.uuid4())
+#         session = sessions[session_id]
+#         history = session.setdefault("history", [])
+#         booking = session.setdefault("booking", {})
+#         awaiting = booking.get("awaiting")
+#         ai_reply = ""
+#         follow_up = None
+
+#         user_lower = user_input.lower()
+
+#         def is_counter_question(msg: str) -> bool:
+#             return any(x in msg for x in [    "what", "how", "which", "who", "where", "when", "why",
+#     "do you", "can you", "could you", "would you", "will you",
+#     "tell me", "show me", "list", "are there", "give", "explain",
+#     "available", "is it", "are you", "should i", "do i need",
+#     "i want to know", "can i", "do we", "does it", "how much",
+#     "how many", "what are", "what is", "who is", "can", "could",
+#     "may i", "should we", "do you have", "how long", "tell us",
+#     "what do", "does your", "do your", "are your", "who are",
+#     "provide", "share", "details", "info", "information", "help",
+#     "support", "contact", "about", "explain", "describe", "anyone",
+#     "doctors", "services", "treatments", "fees", "price", "cost"
+# ])
+
+#         # Booking flow
+#         if awaiting:
+#             if is_counter_question(user_lower):
+#                 # Handle question during booking
+#                 if any(q in user_lower for q in PRICE_QUESTIONS):
+#                     found = find_service_in_text(user_input)
+#                     if found:
+#                         ai_reply = f"{found['name']}: {found['price']}."
+#                     else:
+#                         minp, maxp = get_price_range()
+#                         if minp is not None and maxp is not None:
+#                             ai_reply = f"Prices range from {minp} to {maxp} kroner."
+#                         else:
+#                             ai_reply = "Please ask for a specific treatment price."
+#                 elif "service" in user_lower or "tjeneste" in user_lower:
+#                     s_list = ", ".join(s["name"] for s in SERVICES[:3])
+#                     ai_reply = f"We offer {s_list}, and more."
+#                 else:
+#                     ai_reply = await call_groq_api(user_input)
+
+#                 # Resume booking prompt
+#                 step_map = {
+#                     "name": "What is your name?",
+#                     "phone": "What is your phone number?",
+#                     "email": "What is your email address?",
+#                     "date": "Preferred date?",
+#                     "time": "Preferred time?"
+#                 }
+#                 follow_up = step_map.get(awaiting)
+
+#             else:
+#                 step = awaiting
+#                 value = user_input
+
+#                 if step == "name":
+#                     booking["name"] = value
+#                     booking["awaiting"] = "phone"
+#                     ai_reply = "What is your phone number?"
+
+#                 elif step == "phone":
+#                     if not is_valid_phone(value):
+#                         ai_reply = "Sorry, that doesn't look like a phone number. Please try again."
+#                     else:
+#                         booking["phone"] = value
+#                         booking["awaiting"] = "email"
+#                         ai_reply = "What is your email address?"
+
+#                 elif step == "email":
+#                     if not is_valid_email(value):
+#                         ai_reply = "Hmm, that doesn't seem like a valid email. Please check and try again."
+#                     else:
+#                         booking["email"] = value
+#                         booking["awaiting"] = "date"
+#                         ai_reply = "Preferred date?"
+
+#                 elif step == "date":
+#                     if not is_valid_date(value):
+#                         ai_reply = "Sorry, I didn’t catch a valid date. Could you please try again?"
+#                     else:
+#                         booking["date"] = value
+#                         booking["awaiting"] = "time"
+#                         ai_reply = "Preferred time?"
+
+#                 elif step == "time":
+#                     if not is_valid_time(value):
+#                         ai_reply = "That doesn’t seem like a valid time. Could you tell me your preferred time again?"
+#                     else:
+#                         booking["time"] = value
+#                         booking["awaiting"] = None
+#                         ai_reply = (
+#                             f"Booking for {booking['date']} at {booking['time']}. "
+#                             "You'll get a confirmation email soon. Thank you for booking."
+#                         )
+
+#         # Outside booking: check prices
+#         elif any(q in user_lower for q in PRICE_QUESTIONS):
+#             found = find_service_in_text(user_input)
+#             if found:
+#                 ai_reply = f"{found['name']}: {found['price']}."
+#             else:
+#                 minp, maxp = get_price_range()
+#                 if minp is not None and maxp is not None:
+#                     ai_reply = f"Prices range from {minp} to {maxp} kroner."
+#                 else:
+#                     ai_reply = "Please ask for a specific treatment price."
+
+#         # Start booking
+#         elif any(word in user_lower for word in ["book", "appointment", "reserve time", "møte", "bestill", "time"]):
+#             booking.clear()
+#             booking["awaiting"] = "name"
+#             ai_reply = "What is your name?"
+
+#         # Services
+#         elif "service" in user_lower or "tjeneste" in user_lower:
+#             s_list = ", ".join(s["name"] for s in SERVICES[:3])
+#             ai_reply = f"We offer {s_list}, and more."
+#         elif any(name in user_lower for name in SERVICE_NAMES):
+#             found = next((s for s in SERVICES if s["name"].lower() in user_lower), None)
+#             if found:
+#                 ai_reply = f"{found['name']}: {found['price']}."
+#             else:
+#                 ai_reply = "Service not found."
+
+#         # Fallback to LLM
+#         else:
+#             ai_reply = await call_groq_api(user_input)
+
+#         # Final response composition
+#         final_response = ai_reply
+#         if follow_up:
+#             final_response += f" {follow_up}"
+
+#         # Add TTS buffer
+#         tts_input = f"\u200B{final_response}"  # Zero-width space to avoid word-cut
+
+#         history.append({"user": user_input, "bot": final_response})
+#         audio_url = await call_hume_tts(tts_input)
+
+#         return JSONResponse(
+#             {"response": final_response, "audio_url": audio_url, "session_id": session_id}
+#         )
+
+#     except Exception as e:
+#         print("Internal Server Error")
+#         traceback.print_exc()
+#         return JSONResponse({"error": str(e)}, status_code=500)
+
 @app.post("/api/chat")
 async def chat(request: Request):
     try:
@@ -484,58 +650,51 @@ async def chat(request: Request):
         user_lower = user_input.lower()
 
         def is_counter_question(msg: str) -> bool:
-            return any(x in msg for x in [    "what", "how", "which", "who", "where", "when", "why",
-    "do you", "can you", "could you", "would you", "will you",
-    "tell me", "show me", "list", "are there", "give", "explain",
-    "available", "is it", "are you", "should i", "do i need",
-    "i want to know", "can i", "do we", "does it", "how much",
-    "how many", "what are", "what is", "who is", "can", "could",
-    "may i", "should we", "do you have", "how long", "tell us",
-    "what do", "does your", "do your", "are your", "who are",
-    "provide", "share", "details", "info", "information", "help",
-    "support", "contact", "about", "explain", "describe", "anyone",
-    "doctors", "services", "treatments", "fees", "price", "cost"
-])
+            return any(x in msg for x in [
+                "what", "how", "which", "who", "where", "when", "why",
+                "do you", "can you", "could you", "would you", "will you",
+                "tell me", "show me", "list", "are there", "give", "explain",
+                "available", "is it", "are you", "should i", "do i need",
+                "i want to know", "can i", "do we", "does it", "how much",
+                "how many", "what are", "what is", "who is", "can", "could",
+                "may i", "should we", "do you have", "how long", "tell us",
+                "what do", "does your", "do your", "are your", "who are",
+                "provide", "share", "details", "info", "information", "help",
+                "support", "contact", "about", "explain", "describe", "anyone",
+                "doctors", "services", "treatments", "fees", "price", "cost"
+            ])
 
-        # Booking flow
         if awaiting:
             if is_counter_question(user_lower):
-                # Handle question during booking
                 if any(q in user_lower for q in PRICE_QUESTIONS):
                     found = find_service_in_text(user_input)
                     if found:
                         ai_reply = f"{found['name']}: {found['price']}."
                     else:
-                        minp, maxp = get_price_range()
-                        if minp is not None and maxp is not None:
-                            ai_reply = f"Prices range from {minp} to {maxp} kroner."
-                        else:
-                            ai_reply = "Please ask for a specific treatment price."
-                elif "service" in user_lower or "tjeneste" in user_lower:
+                        # Show general price range, e.g. starting prices
+                        prices = [75]  # base starting price in £ from prompt
+                        minp, maxp = min(prices), max(prices)
+                        ai_reply = f"Prices start from £75 per session."
+                elif "service" in user_lower:
                     s_list = ", ".join(s["name"] for s in SERVICES[:3])
-                    ai_reply = f"We offer {s_list}, and more."
+                    ai_reply = f"Our services include {s_list}, and more."
                 else:
                     ai_reply = await call_groq_api(user_input)
-
-                # Resume booking prompt
                 step_map = {
                     "name": "What is your name?",
                     "phone": "What is your phone number?",
                     "email": "What is your email address?",
                     "date": "Preferred date?",
-                    "time": "Preferred time?"
+                    "time": "Preferred time?",
                 }
                 follow_up = step_map.get(awaiting)
-
             else:
                 step = awaiting
                 value = user_input
-
                 if step == "name":
                     booking["name"] = value
                     booking["awaiting"] = "phone"
                     ai_reply = "What is your phone number?"
-
                 elif step == "phone":
                     if not is_valid_phone(value):
                         ai_reply = "Sorry, that doesn't look like a phone number. Please try again."
@@ -543,7 +702,6 @@ async def chat(request: Request):
                         booking["phone"] = value
                         booking["awaiting"] = "email"
                         ai_reply = "What is your email address?"
-
                 elif step == "email":
                     if not is_valid_email(value):
                         ai_reply = "Hmm, that doesn't seem like a valid email. Please check and try again."
@@ -551,7 +709,6 @@ async def chat(request: Request):
                         booking["email"] = value
                         booking["awaiting"] = "date"
                         ai_reply = "Preferred date?"
-
                 elif step == "date":
                     if not is_valid_date(value):
                         ai_reply = "Sorry, I didn’t catch a valid date. Could you please try again?"
@@ -559,7 +716,6 @@ async def chat(request: Request):
                         booking["date"] = value
                         booking["awaiting"] = "time"
                         ai_reply = "Preferred time?"
-
                 elif step == "time":
                     if not is_valid_time(value):
                         ai_reply = "That doesn’t seem like a valid time. Could you tell me your preferred time again?"
@@ -571,60 +727,46 @@ async def chat(request: Request):
                             "You'll get a confirmation email soon. Thank you for booking."
                         )
 
-        # Outside booking: check prices
         elif any(q in user_lower for q in PRICE_QUESTIONS):
             found = find_service_in_text(user_input)
             if found:
                 ai_reply = f"{found['name']}: {found['price']}."
             else:
-                minp, maxp = get_price_range()
-                if minp is not None and maxp is not None:
-                    ai_reply = f"Prices range from {minp} to {maxp} kroner."
-                else:
-                    ai_reply = "Please ask for a specific treatment price."
+                ai_reply = "Prices start from £75 per session. Please specify service for details."
 
-        # Start booking
-        elif any(word in user_lower for word in ["book", "appointment", "reserve time", "møte", "bestill", "time"]):
+        elif any(word in user_lower for word in ["book", "appointment", "reserve time", "bestill", "time"]):
             booking.clear()
             booking["awaiting"] = "name"
             ai_reply = "What is your name?"
 
-        # Services
-        elif "service" in user_lower or "tjeneste" in user_lower:
+        elif "service" in user_lower:
             s_list = ", ".join(s["name"] for s in SERVICES[:3])
-            ai_reply = f"We offer {s_list}, and more."
+            ai_reply = f"Our services include {s_list}, and more."
+
         elif any(name in user_lower for name in SERVICE_NAMES):
             found = next((s for s in SERVICES if s["name"].lower() in user_lower), None)
             if found:
                 ai_reply = f"{found['name']}: {found['price']}."
             else:
-                ai_reply = "Service not found."
+                ai_reply = "Service not found. Please ask about other services or booking."
 
-        # Fallback to LLM
         else:
             ai_reply = await call_groq_api(user_input)
 
-        # Final response composition
         final_response = ai_reply
         if follow_up:
             final_response += f" {follow_up}"
 
-        # Add TTS buffer
-        tts_input = f"\u200B{final_response}"  # Zero-width space to avoid word-cut
-
+        tts_input = f"\u200B{final_response}"
         history.append({"user": user_input, "bot": final_response})
         audio_url = await call_hume_tts(tts_input)
 
-        return JSONResponse(
-            {"response": final_response, "audio_url": audio_url, "session_id": session_id}
-        )
+        return JSONResponse({"response": final_response, "audio_url": audio_url, "session_id": session_id})
 
     except Exception as e:
         print("Internal Server Error")
         traceback.print_exc()
         return JSONResponse({"error": str(e)}, status_code=500)
-
-
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/", StaticFiles(directory=".", html=True), name="root")
