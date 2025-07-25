@@ -256,8 +256,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 # ---------- 🔧 Configuration ----------
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "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")
-HUME_API_KEY = os.getenv("HUME_API_KEY", "PeS9OER7MSDnERrXgaziLFaOpWHlVsWzl7f4wBXQqBFuIaKE")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "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")
+HUME_API_KEY = os.getenv("HUME_API_KEY", "NWWEM1lRCP2VZUdrYnIA7vhO3YoYATltEAgkboRjJ1X9hz1O")
 LLAMA3_MODEL = "llama3-8b-8192"
 VOICE_DESCRIPTION = "friendly, natural young assistant, warm, quick response, clear, enthusiastic"
 
